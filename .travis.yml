@@ -1,0 +1,17 @@
+language: scala
+
+sudo: false
+
+scala:
+  - "2.12.2"
+
+jdk:
+  - oraclejdk8
+
+script:
+  - sbt -J-XX:ReservedCodeCacheSize=128m ++$TRAVIS_SCALA_VERSION ";compile"
+
+cache:
+  directories:
+    - $HOME/.ivy2/cache
+    - $HOME/.sbt/boot
