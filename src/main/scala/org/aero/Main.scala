@@ -11,7 +11,6 @@ import shapeless.syntax.singleton._
 
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
-import scala.language.{higherKinds, implicitConversions}
 
 object Main {
   def main(args: Array[String]): Unit = {
@@ -23,12 +22,12 @@ object Main {
 
     implicit val as = ActorSystem("default")
     implicit val mat = ActorMaterializer()
-    implicit val ec = as.dispatcher
 
     val r = put("001", BinValues(("js" ->> "data") :: ("key" ->> 1) :: HNil))
     Await.ready(r, Duration.Inf)
 
-    val res = get("000", ("js".as[String], "key".as[Int]))
+    //val res = get("000", ("js".as[String], "key".as[Int]))
+
     val f = getBatch(Seq("000", "001"), ("js".as[String], "key".as[Int])).to(Sink.foreach(r => println(r))).run()
     Await.ready(f, Duration.Inf)
     //val m = Await.result(res, Duration.Inf)
