@@ -8,7 +8,7 @@ This project provides scala client to Aerospike database.
 
 Dependencies 
 ------------
-
+- scala 2.12
 - shapeless-2.3.3
 - java aerospike-client 4
 
@@ -17,8 +17,7 @@ Quick start
 -----------
 To start working with Aero you have to add dependency sbt:
 ```scala
-
-
+  libraryDependencies += "org.aero" % "aero" % "0.1.1" 
 ```
 
 Now you can use it like this:
@@ -44,8 +43,8 @@ Now you can use it like this:
           (key, value) <- get("002", ("key".as[String], "double_column".as[Double]))
           optionResult <- getOpt("002", "string_column".as[String])
         } yield {
-          println(s"$key = $value") //  print 002 = 1.1
-          println(optionResult)     //  print Some(String)
+          println(s"$key = $value") //   002 = 1.1
+          println(optionResult)     //   Some(String)
         }
     
         Await.ready(eventualUnit, Duration.Inf)

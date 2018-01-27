@@ -1,5 +1,4 @@
 import sbt._
-import bintray.BintrayKeys._
 
 object Settings {
 
