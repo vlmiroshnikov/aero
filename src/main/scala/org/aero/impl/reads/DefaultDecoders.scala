@@ -3,7 +3,7 @@ package org.aero.impl.reads
 import com.aerospike.client.Record
 import org.aero.impl.reads.ReadOps._
 
-trait DefaultUnmarshallers {
+trait DefaultDecoders {
   implicit val toS: FSU[String] = (a: Record, key: String) => {
     a.getString(key)
   }

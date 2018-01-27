@@ -12,7 +12,7 @@ import scala.concurrent.{Future, Promise}
 import scala.util.Try
 import scala.util.control.NonFatal
 
-trait ReadOps  {
+trait ReadOps {
   def get[K](key: K,
              magnet: BinMagnet)(implicit aec: AeroContext, kw: KeyWrapper[K], schema: Schema): Future[magnet.Out] =
     aec.exec { (ac, loop) =>
@@ -24,7 +24,39 @@ trait ReadOps  {
           promise.failure(exception)
 
         override def onSuccess(key: Key, record: Record): Unit =
-          promise.complete(Try(magnet.extract(record)))
+          Option(record) match {
+            case None =>
+              promise.failure(KeyNotFoundException(s"${key.namespace}:${key.setName}:${key.userKey}"))
+            case Some(rec) =>
+              promise.complete(Try(magnet.extract(rec)))
+          }
+      }
+
+      try {
+        val k = new Key(schema.namespace, schema.set, kw.value(key))
+        ac.get(loop, listener, defaultPolicy, k, magnet.names: _*)
+      } catch {
+        case NonFatal(e) =>
+          promise.failure(e)
+      }
+      promise.future
+    }
+
+  def getOpt[K](key: K, magnet: BinMagnet)(implicit aec: AeroContext,
+                                           kw: KeyWrapper[K],
+                                           schema: Schema): Future[Option[magnet.Out]] =
+    aec.exec { (ac, loop) =>
+      val defaultPolicy = ac.readPolicyDefault
+      val promise = Promise[Option[magnet.Out]]()
+
+      val listener = new RecordListener {
+        override def onFailure(exception: AerospikeException): Unit =
+          promise.failure(exception)
+
+        override def onSuccess(key: Key, record: Record): Unit =
+          promise.complete(Try(Option(record) map { rec =>
+            magnet.extract(rec)
+          }))
       }
 
       try {
@@ -39,8 +71,8 @@ trait ReadOps  {
 }
 
 object ReadOps {
-  type FSU[T] = Unmarshaller[T]
-  type FSOU[T] = Unmarshaller[Option[T]]
+  type FSU[T] = Decoder[T]
+  type FSOU[T] = Decoder[Option[T]]
 
   trait BinMagnet {
     type Out
@@ -75,12 +107,11 @@ object ReadOps {
         def apply(r: Record, a: A): Out = f(a)(r)
       }
 
-    private def extractParameter[A, B](f: A => Record => B,
-                                       gn: A => Seq[String])(implicit fsu: Unmarshaller[B]): ParamDefAux[A, B] =
+    private def extractParameter[A, B](f: A => Record => B, gn: A => Seq[String]): ParamDefAux[A, B] =
       paramDef(f, gn)
 
-    private def extract[B](key: String)(implicit fsu: Unmarshaller[B]): Record => B = { r =>
-      fsu.apply(r, key)
+    private def extract[B](key: String)(implicit fsu: Decoder[B]): Record => B = { r =>
+      fsu.decode(r, key)
     }
 
     implicit def forNamed[T](implicit fsu: FSU[T]): ParamDefAux[Named[T], T] =
@@ -93,13 +124,17 @@ object ReadOps {
         implicit
         genFrom: Generic.Aux[T, L],
         mapper: Mapper.Aux[magnetize.type, L, M],
-        mm: FactoryMap.Aux[M, S],
+        mm: HListTransformer.Aux[M, S],
         tupler: Tupler.Aux[S, Out],
         travers: ToTraversable.Aux[M, List, BinMagnet]
     ): ParamDefAux[T, tupler.Out] =
       paramDef[T, tupler.Out](
-        tuple => r => HListMaterializer(genFrom.to(tuple).map(magnetize)).map(r).tupled,
-        t => genFrom.to(t).map(magnetize).toList[BinMagnet].flatMap(_.names)
+        params => {
+          val mat = HListMaterializer(genFrom.to(params).map(magnetize))
+          record =>
+            mat.map(record).tupled
+        },
+        params => genFrom.to(params).map(magnetize).toList[BinMagnet].flatMap(_.names)
       )
 
     object magnetize extends Poly1 {
