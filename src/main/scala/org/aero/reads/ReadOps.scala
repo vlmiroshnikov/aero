@@ -71,8 +71,6 @@ trait ReadOps {
 }
 
 object ReadOps {
-  type FSU[T] = Decoder[T]
-  type FSOU[T] = Decoder[Option[T]]
 
   trait BinMagnet {
     type Out
@@ -114,10 +112,10 @@ object ReadOps {
       fsu.decode(r, key)
     }
 
-    implicit def forNamed[T](implicit fsu: FSU[T]): ParamDefAux[Named[T], T] =
+    implicit def forNamed[T](implicit fsu: Decoder[T]): ParamDefAux[Named[T], T] =
       extractParameter[Named[T], T](nr => extract(nr.name), nr => Seq(nr.name))
 
-    implicit def forNamedOption[T](implicit fsu: FSOU[T]): ParamDefAux[NamedOption[T], Option[T]] =
+    implicit def forNamedOption[T](implicit fsu: Decoder[Option[T]]): ParamDefAux[NamedOption[T], Option[T]] =
       extractParameter[NamedOption[T], Option[T]](nr => extract(nr.name), nr => Seq(nr.name))
 
     implicit def forTuple[T, L <: HList, M <: HList, S <: HList, Out](

@@ -1,18 +1,21 @@
 package org.aero.reads
 
 import com.aerospike.client.Record
-import org.aero.reads.ReadOps._
 
 trait DefaultDecoders {
-  implicit val toS: FSU[String] = (a: Record, key: String) => {
-    a.getString(key)
-  }
-
-  implicit val toSO: FSOU[String] = (a: Record, key: String) => {
+  implicit val stringDecoder: Decoder[String] = (a: Record, key: String) => { a.getString(key) }
+  implicit val optionStringDecoder: Decoder[Option[String]] = (a: Record, key: String) => {
     if (a.bins.containsKey(key)) Some(a.getString(key)) else None
   }
 
-  implicit val toI: FSU[Int] = (a: Record, key: String) => {
-    a.getInt(key)
+  implicit val intDecoder: Decoder[Int] = (a: Record, key: String) => { a.getInt(key) }
+  implicit val optionIntDecoder: Decoder[Option[Int]] = (a: Record, key: String) => {
+    if (a.bins.containsKey(key)) Some(a.getInt(key)) else None
   }
+
+  implicit val doubleDecoder: Decoder[Double] = (a: Record, key: String) => { a.getDouble(key) }
+  implicit val optionDoubleDecoder: Decoder[Option[Double]] = (a: Record, key: String) => {
+    if (a.bins.containsKey(key)) Some(a.getDouble(key)) else None
+  }
+
 }
