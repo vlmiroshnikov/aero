@@ -1,10 +1,8 @@
 package org
 
-import com.aerospike.client.Value
-import org.aero.impl.common.KeyWrapper
+import org.aero.writes.WBin
 
 package object aero {
-  implicit val stringKW: KeyWrapper[String] = KeyWrapper(Value.get)
-
-  case class Schema(namespace: String, set: String)
+  type WriteBin[T] = WBin[T]
+  val WriteBin = WBin
 }
