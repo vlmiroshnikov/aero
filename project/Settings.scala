@@ -1,4 +1,5 @@
 import sbt._
+import bintray.BintrayKeys._
 
 object Settings {
 
@@ -26,3 +27,6 @@ object Settings {
     "com.aerospike" % "aerospike-client" % Versions.aerospike
   )
 }
+
+
+
