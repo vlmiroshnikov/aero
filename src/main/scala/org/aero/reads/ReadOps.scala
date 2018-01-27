@@ -1,9 +1,9 @@
-package org.aero.impl.reads
+package org.aero.reads
 
 import com.aerospike.client.listener.RecordListener
 import com.aerospike.client.{AerospikeException, Key, Record}
-import org.aero.impl.common.KeyWrapper
-import org.aero.impl.reads.ReadOps.BinMagnet
+import org.aero.common.KeyWrapper
+import org.aero.reads.ReadOps.BinMagnet
 import org.aero.{AeroContext, Schema}
 import shapeless.ops.hlist._
 import shapeless.{Generic, HList, Poly1}

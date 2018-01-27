@@ -1,7 +1,7 @@
-package org.aero.impl.reads
+package org.aero.reads
 
 import com.aerospike.client.Record
-import org.aero.impl.reads.ReadOps._
+import org.aero.reads.ReadOps._
 
 trait DefaultDecoders {
   implicit val toS: FSU[String] = (a: Record, key: String) => {

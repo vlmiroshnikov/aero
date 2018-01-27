@@ -1,10 +1,10 @@
-package org.aero.impl.writes
+package org.aero.writes
 
 import com.aerospike.client.listener.WriteListener
 import com.aerospike.client.policy.WritePolicy
 import com.aerospike.client.{AerospikeException, Bin, Key}
-import org.aero.impl.common.KeyWrapper
-import org.aero.impl.writes.WriteOps.WBinMagnet
+import org.aero.common.KeyWrapper
+import org.aero.writes.WriteOps.WBinMagnet
 import org.aero.{AeroContext, Schema}
 import shapeless.ops.hlist
 import shapeless.{Generic, HList, Poly2}

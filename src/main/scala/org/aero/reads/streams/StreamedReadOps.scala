@@ -1,10 +1,10 @@
-package org.aero.impl.reads.streams
+package org.aero.reads.streams
 
 import akka.Done
 import akka.stream.scaladsl.Source
 import com.aerospike.client.Key
-import org.aero.impl.common.KeyWrapper
-import org.aero.impl.reads.ReadOps.BinMagnet
+import org.aero.common.KeyWrapper
+import org.aero.reads.ReadOps.BinMagnet
 import org.aero.{AeroContext, Schema}
 
 import scala.concurrent.Future

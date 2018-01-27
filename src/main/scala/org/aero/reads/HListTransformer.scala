@@ -1,7 +1,7 @@
-package org.aero.impl.reads
+package org.aero.reads
 
 import com.aerospike.client.Record
-import org.aero.impl.reads.ReadOps.BinMagnet
+import org.aero.reads.ReadOps.BinMagnet
 import shapeless._
 
 private[reads] trait HListTransformer[L <: HList] {

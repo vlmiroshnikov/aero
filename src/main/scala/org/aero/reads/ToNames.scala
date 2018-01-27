@@ -1,4 +1,4 @@
-package org.aero.impl.reads
+package org.aero.reads
 
 class Named[T](val name: String) {
   def as[B] = new Named[B](name)

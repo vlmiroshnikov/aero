@@ -1,4 +1,4 @@
-package org.aero.impl.writes
+package org.aero.writes
 
 import com.aerospike.client.Value
 

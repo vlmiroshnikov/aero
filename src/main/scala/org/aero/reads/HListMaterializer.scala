@@ -1,4 +1,4 @@
-package org.aero.impl.reads
+package org.aero.reads
 
 import com.aerospike.client.Record
 import shapeless.HList

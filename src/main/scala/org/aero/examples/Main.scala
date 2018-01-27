@@ -1,11 +1,11 @@
-package org.aero
+package org.aero.examples
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.Sink
 import org.aero.AeroOps._
 import org.aero.AeroStreamedOps._
-import org.aero.impl.writes._
+import org.aero._
 
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
@@ -15,13 +15,15 @@ object Main {
     val host = "localhost"
     val port = 3000
 
+
     implicit val schema = Schema("test", "org-os")
     implicit val ac = AeroClient(host, port)
 
     implicit val as = ActorSystem("default")
     implicit val mat = ActorMaterializer()
 
-    val r = put("002", (WBin("key", "002"), WBin("her", "sdfsdf"), WBin("aa", 1.1)))
+
+    val r = put("002", (WriteBin("key", "002"), WriteBin("her", "sdfsdf"), WriteBin("aa", 1.1)))
     Await.ready(r, Duration.Inf)
 
     //println(Await.result(get("000", ("js".as[String], "key".as[Int])), Duration.Inf))

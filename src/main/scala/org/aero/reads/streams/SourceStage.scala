@@ -1,4 +1,4 @@
-package org.aero.impl.reads.streams
+package org.aero.reads.streams
 
 import akka.Done
 import akka.stream.stage.{GraphStageLogic, GraphStageWithMaterializedValue, OutHandler}
