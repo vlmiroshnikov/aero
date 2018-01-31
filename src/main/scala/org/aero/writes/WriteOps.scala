@@ -1,6 +1,9 @@
 package org.aero.writes
 
-import com.aerospike.client.listener.WriteListener
+import java.time.Instant
+import java.util.Calendar
+
+import com.aerospike.client.listener.{DeleteListener, WriteListener}
 import com.aerospike.client.policy.WritePolicy
 import com.aerospike.client.{AerospikeException, Bin, Key}
 import org.aero.common.KeyWrapper
@@ -11,6 +14,7 @@ import shapeless.{Generic, HList, Poly2}
 
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{Future, Promise}
+import scala.util.Success
 import scala.util.control.NonFatal
 
 trait WriteOps {
@@ -46,26 +50,63 @@ trait WriteOps {
       promise.future
     }
   }
+
+  def truncate(beforeLastUpdate: Instant)(implicit aec: AeroContext, schema: Schema): Unit = {
+    aec.exec { (ac, _) =>
+      val calendar = Calendar.getInstance()
+      calendar.setTimeInMillis(beforeLastUpdate.toEpochMilli)
+      ac.truncate(ac.infoPolicyDefault, schema.namespace, schema.set, calendar)
+    }
+  }
+
+  def delete[K](key: K)(implicit aec: AeroContext, kw: KeyWrapper[K], schema: Schema): Future[Boolean] = {
+    aec.exec { (ac, loop) =>
+      val promise = Promise[Boolean]()
+      val listener = new DeleteListener {
+        override def onFailure(exception: AerospikeException): Unit = {
+          promise.failure(exception)
+
+        }
+
+        override def onSuccess(key: Key, existed: Boolean): Unit = {
+          promise.complete(Success(existed))
+        }
+      }
+
+      try {
+        val k = new Key(schema.namespace, schema.set, kw.value(key))
+        ac.delete(loop, listener, ac.writePolicyDefault, k)
+      } catch {
+        case NonFatal(e) =>
+          promise.failure(e)
+      }
+
+      promise.future
+    }
+  }
 }
 
 object WriteOps {
 
   trait WBinMagnet {
     type Out
+
     def apply(): Out
   }
 
   object WBinMagnet {
     implicit def apply[T](value: T)(implicit wpd: WriteParamDef[T]) = new WBinMagnet {
       type Out = wpd.Out
+
       override def apply(): Out = wpd.apply(value)
     }
   }
 
-  type WriteParamDefAux[T, U] = WriteParamDef[T] { type Out = U }
+  type WriteParamDefAux[T, U] = WriteParamDef[T] {type Out = U}
 
   sealed trait WriteParamDef[T] {
     type Out
+
     def apply(p: T): Out
   }
 
@@ -74,6 +115,7 @@ object WriteOps {
     def writeParamDef[A, B](f: A => B): WriteParamDefAux[A, B] =
       new WriteParamDef[A] {
         type Out = B
+
         override def apply(p: A): Out = f(p)
       }
 
@@ -81,10 +123,10 @@ object WriteOps {
       writeParamDef(a => List(new Bin(a.name, enc.encode(a.value))))
 
     implicit def fopTuple[T, L <: HList](
-        implicit
-        gen: Generic.Aux[T, L],
-        folder: hlist.LeftFolder[L, List[Bin], Reducer.type]
-    ): WriteParamDefAux[T, folder.Out] =
+                                          implicit
+                                          gen: Generic.Aux[T, L],
+                                          folder: hlist.LeftFolder[L, List[Bin], Reducer.type]
+                                        ): WriteParamDefAux[T, folder.Out] =
       writeParamDef { p =>
         gen.to(p).foldLeft(List.empty[Bin])(Reducer)
       }

@@ -1,6 +1,6 @@
 package org.aero.reads
 
-import com.aerospike.client.listener.RecordListener
+import com.aerospike.client.listener.{ExistsListener, RecordListener}
 import com.aerospike.client.{AerospikeException, Key, Record}
 import org.aero.common.KeyWrapper
 import org.aero.reads.ReadOps.BinMagnet
@@ -9,8 +9,8 @@ import shapeless.ops.hlist._
 import shapeless.{Generic, HList, Poly1}
 
 import scala.concurrent.{Future, Promise}
-import scala.util.Try
 import scala.util.control.NonFatal
+import scala.util.{Success, Try}
 
 trait ReadOps {
   def get[K](key: K,
@@ -68,6 +68,32 @@ trait ReadOps {
       }
       promise.future
     }
+
+  def exists[K](key: K)(implicit aec: AeroContext, kw: KeyWrapper[K], schema: Schema): Future[Boolean] = {
+    aec.exec { (ac, loop) =>
+      val defaultPolicy = ac.readPolicyDefault
+      val promise = Promise[Boolean]()
+
+      val listener = new ExistsListener {
+        override def onFailure(exception: AerospikeException): Unit = {
+          promise.failure(exception)
+        }
+
+        override def onSuccess(key: Key, exists: Boolean): Unit = {
+          promise.complete(Success(exists))
+        }
+      }
+
+      try {
+        val k = new Key(schema.namespace, schema.set, kw.value(key))
+        ac.exists(loop, listener, defaultPolicy, k)
+      } catch {
+        case NonFatal(e) =>
+          promise.failure(e)
+      }
+      promise.future
+    }
+  }
 }
 
 object ReadOps {
@@ -76,6 +102,7 @@ object ReadOps {
     type Out
 
     def names: Seq[String]
+
     def extract(in: Record): Out
   }
 
@@ -84,6 +111,7 @@ object ReadOps {
       type Out = pdef.Out
 
       override def names: Seq[String] = pdef.names(name)
+
       override def extract(rec: Record): Out =
         pdef.apply(rec, name)
     }
@@ -93,7 +121,9 @@ object ReadOps {
 
   sealed trait ParamDef[T] {
     type Out
+
     def names(key: T): Seq[String]
+
     def apply(r: Record, key: T): Out
   }
 
@@ -101,7 +131,9 @@ object ReadOps {
     def paramDef[A, B](f: A => Record => B, gn: A => Seq[String]): ParamDefAux[A, B] =
       new ParamDef[A] {
         type Out = B
+
         def names(a: A): Seq[String] = gn(a)
+
         def apply(r: Record, a: A): Out = f(a)(r)
       }
 
@@ -142,5 +174,7 @@ object ReadOps {
       implicit def namedOption[M](implicit pd: ParamDef[NamedOption[M]]) =
         at[NamedOption[M]](nr => BinMagnet.apply(nr)(pd))
     }
+
   }
+
 }

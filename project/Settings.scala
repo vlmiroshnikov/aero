@@ -4,7 +4,7 @@ object Settings {
 
   object Versions {
     val shapless = "2.3.3"
-    val aerospike = "4.0.8"
+    val aerospike = "4.1.2"
   }
 
   val scalacOptions = Seq(
