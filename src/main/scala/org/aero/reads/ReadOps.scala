@@ -102,7 +102,6 @@ object ReadOps {
     type Out
 
     def names: Seq[String]
-
     def extract(in: Record): Out
   }
 
@@ -111,7 +110,6 @@ object ReadOps {
       type Out = pdef.Out
 
       override def names: Seq[String] = pdef.names(name)
-
       override def extract(rec: Record): Out =
         pdef.apply(rec, name)
     }
@@ -123,7 +121,6 @@ object ReadOps {
     type Out
 
     def names(key: T): Seq[String]
-
     def apply(r: Record, key: T): Out
   }
 
@@ -133,7 +130,6 @@ object ReadOps {
         type Out = B
 
         def names(a: A): Seq[String] = gn(a)
-
         def apply(r: Record, a: A): Out = f(a)(r)
       }
 
@@ -144,13 +140,13 @@ object ReadOps {
       fsu.decode(r, key)
     }
 
-    implicit def forNamed[T](implicit fsu: Decoder[T]): ParamDefAux[Named[T], T] =
+    implicit def forNamed[T](implicit decoder: Decoder[T]): ParamDefAux[Named[T], T] =
       extractParameter[Named[T], T](nr => extract(nr.name), nr => Seq(nr.name))
 
-    implicit def forNamedOption[T](implicit fsu: Decoder[Option[T]]): ParamDefAux[NamedOption[T], Option[T]] =
+    implicit def forNamedOption[T](implicit decoder: Decoder[Option[T]]): ParamDefAux[NamedOption[T], Option[T]] =
       extractParameter[NamedOption[T], Option[T]](nr => extract(nr.name), nr => Seq(nr.name))
 
-    implicit def forTuple[T, L <: HList, M <: HList, S <: HList, Out](
+    implicit def forTuple[T <: Product, L <: HList, M <: HList, S <: HList, Out](
         implicit
         genFrom: Generic.Aux[T, L],
         mapper: Mapper.Aux[magnetize.type, L, M],

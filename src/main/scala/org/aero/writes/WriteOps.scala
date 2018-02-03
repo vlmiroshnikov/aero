@@ -10,7 +10,8 @@ import org.aero.common.KeyWrapper
 import org.aero.writes.WriteOps.WBinMagnet
 import org.aero.{AeroContext, Schema}
 import shapeless.ops.hlist
-import shapeless.{Generic, HList, Poly2}
+import shapeless.ops.record._
+import shapeless.{Generic, HList, LabelledGeneric, Poly1, Poly2}
 
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{Future, Promise}
@@ -90,23 +91,20 @@ object WriteOps {
 
   trait WBinMagnet {
     type Out
-
     def apply(): Out
   }
 
   object WBinMagnet {
     implicit def apply[T](value: T)(implicit wpd: WriteParamDef[T]) = new WBinMagnet {
       type Out = wpd.Out
-
       override def apply(): Out = wpd.apply(value)
     }
   }
 
-  type WriteParamDefAux[T, U] = WriteParamDef[T] {type Out = U}
+  type WriteParamDefAux[T, U] = WriteParamDef[T] { type Out = U }
 
   sealed trait WriteParamDef[T] {
     type Out
-
     def apply(p: T): Out
   }
 
@@ -115,18 +113,33 @@ object WriteOps {
     def writeParamDef[A, B](f: A => B): WriteParamDefAux[A, B] =
       new WriteParamDef[A] {
         type Out = B
-
         override def apply(p: A): Out = f(p)
       }
 
     implicit def forWBin[T](implicit enc: Encoder[T]): WriteParamDefAux[WBin[T], List[Bin]] =
       writeParamDef(a => List(new Bin(a.name, enc.encode(a.value))))
 
-    implicit def fopTuple[T, L <: HList](
-                                          implicit
-                                          gen: Generic.Aux[T, L],
-                                          folder: hlist.LeftFolder[L, List[Bin], Reducer.type]
-                                        ): WriteParamDefAux[T, folder.Out] =
+    implicit def forCaseClass[T, L <: HList, K <: HList, R <: HList, Z <: HList, Out](
+        implicit gen: LabelledGeneric.Aux[T, L],
+        fields: Fields.Aux[L, R],
+        mapper: hlist.Mapper.Aux[keysToString.type, R, Z],
+        folder: hlist.LeftFolder[Z, List[Bin], Reducer.type]
+    ): WriteParamDefAux[T, folder.Out] = {
+      writeParamDef { p =>
+        fields(gen.to(p)).map(keysToString).foldLeft(List.empty[Bin])(Reducer)
+      }
+    }
+
+    object keysToString extends Poly1 {
+      implicit def toWBin[A, B] = at[(Symbol with A, B)] {
+        case (k, v) => WBin[B](k.name, v)
+      }
+    }
+
+    implicit def fopTuple[T <: Product, L <: HList](
+        implicit gen: Generic.Aux[T, L],
+        folder: hlist.LeftFolder[L, List[Bin], Reducer.type]
+    ): WriteParamDefAux[T, folder.Out] =
       writeParamDef { p =>
         gen.to(p).foldLeft(List.empty[Bin])(Reducer)
       }
