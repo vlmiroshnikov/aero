@@ -6,7 +6,7 @@ import org.aero.common.KeyWrapper
 import org.aero.reads.ReadOps.BinMagnet
 import org.aero.{AeroContext, Schema}
 import shapeless.ops.hlist._
-import shapeless.{Generic, HList, Poly1}
+import shapeless._
 
 import scala.concurrent.{Future, Promise}
 import scala.util.control.NonFatal
@@ -136,8 +136,8 @@ object ReadOps {
     private def extractParameter[A, B](f: A => Record => B, gn: A => Seq[String]): ParamDefAux[A, B] =
       paramDef(f, gn)
 
-    private def extract[B](key: String)(implicit fsu: Decoder[B]): Record => B = { r =>
-      fsu.decode(r, key)
+    private def extract[B](key: String)(implicit decoder: Decoder[B]): Record => B = { r =>
+      decoder.decode(r, key)
     }
 
     implicit def forNamed[T](implicit decoder: Decoder[T]): ParamDefAux[Named[T], T] =

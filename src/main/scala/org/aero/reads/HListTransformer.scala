@@ -17,11 +17,12 @@ private[reads] object HListTransformer {
     def transform(i: Record, l: HNil): HNil = l
   }
 
-  implicit def caseCons[S, B <: BinMagnet, T <: HList, O <: HList](implicit ev: Aux[T, O]) = new HListTransformer[B :: T] {
-    type Out = B#Out :: O
-    def transform(i: Record, l: B :: T): B#Out :: O = {
-      val (head :: tail) = l
-      head.extract(i) :: ev.transform(i, tail)
+  implicit def caseCons[S, B <: BinMagnet, T <: HList, O <: HList](implicit ev: Aux[T, O]) =
+    new HListTransformer[B :: T] {
+      type Out = B#Out :: O
+      def transform(i: Record, l: B :: T): B#Out :: O = {
+        val (head :: tail) = l
+        head.extract(i) :: ev.transform(i, tail)
+      }
     }
-  }
 }

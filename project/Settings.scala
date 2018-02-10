@@ -27,6 +27,3 @@ object Settings {
     "com.aerospike" % "aerospike-client" % Versions.aerospike
   )
 }
-
-
-
