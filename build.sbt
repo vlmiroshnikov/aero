@@ -9,7 +9,7 @@ lazy val `aero` = project
     libraryDependencies ++= Settings.dependencies,
     organization := "org.aero",
     bintrayRepository := "aero",
-    licenses += ("MIT", url("http://opensource.org/licenses/MIT")),
+    licenses += ("Apache-2.0", url("https://opensource.org/licenses/Apache-2.0")),
     pomExtra :=
       <developers>
         <developer>
