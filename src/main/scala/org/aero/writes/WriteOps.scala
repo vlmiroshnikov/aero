@@ -3,10 +3,10 @@ package org.aero.writes
 import java.time.Instant
 import java.util.Calendar
 
-import com.aerospike.client.listener.{DeleteListener, WriteListener}
+import com.aerospike.client.listener.DeleteListener
 import com.aerospike.client.policy.WritePolicy
 import com.aerospike.client.{AerospikeException, Bin, Key}
-import org.aero.common.KeyWrapper
+import org.aero.common.{KeyWrapper, Listeners}
 import org.aero.writes.WriteOps.WBinMagnet
 import org.aero.{AeroContext, Schema}
 import shapeless.ops.hlist
@@ -19,6 +19,33 @@ import scala.util.Success
 import scala.util.control.NonFatal
 
 trait WriteOps {
+  def append[K](key: K, magnet: WBinMagnet, ttl: Option[FiniteDuration] = None)(implicit aec: AeroContext,
+                                                                                kw: KeyWrapper[K],
+                                                                                schema: Schema): Future[Unit] = {
+
+    val promise = Promise[Unit]()
+
+    aec.exec { (ac, loop) =>
+      val defaultPolicy = ac.writePolicyDefault
+
+      val policy = ttl.map { ttl =>
+        val modified = new WritePolicy(defaultPolicy)
+        modified.expiration = ttl.toSeconds.toInt
+        modified
+      } getOrElse defaultPolicy
+
+      try {
+        val bins = magnet().asInstanceOf[Seq[Bin]]
+        val k = new Key(schema.namespace, schema.set, kw.value(key))
+        ac.append(loop, Listeners.writeInstance(promise), policy, k, bins: _*)
+      } catch {
+        case NonFatal(e) =>
+          promise.failure(e)
+      }
+    }
+    promise.future
+  }
+
   def put[K](key: K, magnet: WBinMagnet, ttl: Option[FiniteDuration] = None)(implicit aec: AeroContext,
                                                                              kw: KeyWrapper[K],
                                                                              schema: Schema): Future[Unit] = {
@@ -33,17 +60,10 @@ trait WriteOps {
 
       val promise = Promise[Unit]()
 
-      val listener = new WriteListener {
-        override def onFailure(exception: AerospikeException): Unit =
-          promise.failure(exception)
-
-        override def onSuccess(key: Key): Unit = promise.success(())
-      }
-
       try {
         val bins = magnet().asInstanceOf[Seq[Bin]]
         val k = new Key(schema.namespace, schema.set, kw.value(key))
-        ac.put(loop, listener, policy, k, bins: _*)
+        ac.put(loop, Listeners.writeInstance(promise), policy, k, bins: _*)
       } catch {
         case NonFatal(e) =>
           promise.failure(e)
@@ -66,7 +86,6 @@ trait WriteOps {
       val listener = new DeleteListener {
         override def onFailure(exception: AerospikeException): Unit = {
           promise.failure(exception)
-
         }
 
         override def onSuccess(key: Key, existed: Boolean): Unit = {
