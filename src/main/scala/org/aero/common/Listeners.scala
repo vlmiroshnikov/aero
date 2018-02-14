@@ -5,7 +5,7 @@ import com.aerospike.client.{AerospikeException, Key}
 
 import scala.concurrent.Promise
 
-private[writes] object Listeners {
+object Listeners {
   def writeInstance(promise: Promise[Unit]) = new WriteListener {
     override def onFailure(exception: AerospikeException): Unit =
       promise.failure(exception)
