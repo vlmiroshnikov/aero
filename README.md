@@ -17,7 +17,7 @@ Quick start
 -----------
 To start working with Aero you have to add dependency sbt:
 ```scala
-  libraryDependencies += "org.aero" % "aero" % "0.1.1" 
+  libraryDependencies += "org.aero" % "aero" % "0.2.1" 
 ```
 
 Now you can use it like this:
@@ -39,6 +39,7 @@ Now you can use it like this:
         implicit val ac = AeroClient(host, port)
     
         val eventualUnit = for {
+          _ <- put("001", Data(1, List("123")))
           _ <- put("002", (WriteBin("key", "002"), WriteBin("string_column", "string"), WriteBin("double_column", 1.1)))
           (key, value) <- get("002", ("key".as[String], "double_column".as[Double]))
           optionResult <- getOpt("002", "string_column".as[String])
@@ -52,6 +53,5 @@ Now you can use it like this:
         ac.close()
       }
     }
-
+    case class Data(key: Int, value: List[String])
 ```
-  
