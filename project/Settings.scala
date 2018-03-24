@@ -19,7 +19,6 @@ object Settings {
     "-Ywarn-numeric-widen",
     "-Ywarn-value-discard",
     "-Ywarn-unused"
-    //"-Xlog-implicits"
   )
 
   val dependencies = Seq(

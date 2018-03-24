@@ -6,12 +6,11 @@ import java.util.Calendar
 import com.aerospike.client.listener.DeleteListener
 import com.aerospike.client.policy.WritePolicy
 import com.aerospike.client.{AerospikeException, Bin, Key}
-import org.aero.common.{KeyWrapper, Listeners}
+import org.aero.common.KeyWrapper
 import org.aero.writes.WriteOps.WBinMagnet
 import org.aero.{AeroContext, Schema}
 import shapeless.ops.hlist
-import shapeless.ops.record._
-import shapeless.{Generic, HList, LabelledGeneric, Poly1, Poly2}
+import shapeless.{Generic, HList, Poly2}
 
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{Future, Promise}
@@ -114,7 +113,7 @@ object WriteOps {
   }
 
   object WBinMagnet {
-    implicit def apply[T](value: T)(implicit wpd: WriteParamDef[T]) = new WBinMagnet {
+    implicit def apply[T](value: T)(implicit wpd: WriteParamDef[T]): WBinMagnet = new WBinMagnet {
       type Out = wpd.Out
       override def apply(): Out = wpd.apply(value)
     }
@@ -138,26 +137,9 @@ object WriteOps {
     implicit def forWBin[T](implicit enc: Encoder[T]): WriteParamDefAux[WBin[T], List[Bin]] =
       writeParamDef(a => List(new Bin(a.name, enc.encode(a.value))))
 
-    implicit def forCaseClass[T, L <: HList, K <: HList, R <: HList, Z <: HList, Out](
-        implicit gen: LabelledGeneric.Aux[T, L],
-        fields: Fields.Aux[L, R],
-        mapper: hlist.Mapper.Aux[keysToString.type, R, Z],
-        folder: hlist.LeftFolder[Z, List[Bin], Reducer.type]
-    ): WriteParamDefAux[T, folder.Out] = {
-      writeParamDef { p =>
-        fields(gen.to(p)).map(keysToString).foldLeft(List.empty[Bin])(Reducer)
-      }
-    }
-
-    object keysToString extends Poly1 {
-      implicit def toWBin[A, B] = at[(Symbol with A, B)] {
-        case (k, v) => WBin[B](k.name, v)
-      }
-    }
-
-    implicit def fopTuple[T <: Product, L <: HList](
+    implicit def fopTuple[T <: Product, L <: HList, Out](
         implicit gen: Generic.Aux[T, L],
-        folder: hlist.LeftFolder[L, List[Bin], Reducer.type]
+        folder: hlist.LeftFolder.Aux[L, List[Bin], Reducer.type, Out]
     ): WriteParamDefAux[T, folder.Out] =
       writeParamDef { p =>
         gen.to(p).foldLeft(List.empty[Bin])(Reducer)
