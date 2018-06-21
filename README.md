@@ -17,7 +17,7 @@ Quick start
 -----------
 To start working with Aero you have to add dependency sbt:
 ```scala
-  libraryDependencies += "org.aero" % "aero" % "0.1.1" 
+  libraryDependencies += "org.aero" % "aero" % "0.2.1" 
 ```
 
 Now you can use it like this:
@@ -52,6 +52,4 @@ Now you can use it like this:
         ac.close()
       }
     }
-
 ```
-  

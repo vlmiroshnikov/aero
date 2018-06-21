@@ -1,16 +1,16 @@
 package org.aero.reads
 
-import com.aerospike.client.listener.RecordListener
+import com.aerospike.client.listener.{ExistsListener, RecordListener}
 import com.aerospike.client.{AerospikeException, Key, Record}
 import org.aero.common.KeyWrapper
 import org.aero.reads.ReadOps.BinMagnet
 import org.aero.{AeroContext, Schema}
 import shapeless.ops.hlist._
-import shapeless.{Generic, HList, Poly1}
+import shapeless._
 
 import scala.concurrent.{Future, Promise}
-import scala.util.Try
 import scala.util.control.NonFatal
+import scala.util.{Success, Try}
 
 trait ReadOps {
   def get[K](key: K,
@@ -68,6 +68,32 @@ trait ReadOps {
       }
       promise.future
     }
+
+  def exists[K](key: K)(implicit aec: AeroContext, kw: KeyWrapper[K], schema: Schema): Future[Boolean] = {
+    aec.exec { (ac, loop) =>
+      val defaultPolicy = ac.readPolicyDefault
+      val promise = Promise[Boolean]()
+
+      val listener = new ExistsListener {
+        override def onFailure(exception: AerospikeException): Unit = {
+          promise.failure(exception)
+        }
+
+        override def onSuccess(key: Key, exists: Boolean): Unit = {
+          promise.complete(Success(exists))
+        }
+      }
+
+      try {
+        val k = new Key(schema.namespace, schema.set, kw.value(key))
+        ac.exists(loop, listener, defaultPolicy, k)
+      } catch {
+        case NonFatal(e) =>
+          promise.failure(e)
+      }
+      promise.future
+    }
+  }
 }
 
 object ReadOps {
@@ -93,6 +119,7 @@ object ReadOps {
 
   sealed trait ParamDef[T] {
     type Out
+
     def names(key: T): Seq[String]
     def apply(r: Record, key: T): Out
   }
@@ -101,6 +128,7 @@ object ReadOps {
     def paramDef[A, B](f: A => Record => B, gn: A => Seq[String]): ParamDefAux[A, B] =
       new ParamDef[A] {
         type Out = B
+
         def names(a: A): Seq[String] = gn(a)
         def apply(r: Record, a: A): Out = f(a)(r)
       }
@@ -108,17 +136,17 @@ object ReadOps {
     private def extractParameter[A, B](f: A => Record => B, gn: A => Seq[String]): ParamDefAux[A, B] =
       paramDef(f, gn)
 
-    private def extract[B](key: String)(implicit fsu: Decoder[B]): Record => B = { r =>
-      fsu.decode(r, key)
+    private def extract[B](key: String)(implicit decoder: Decoder[B]): Record => B = { r =>
+      decoder.decode(r, key)
     }
 
-    implicit def forNamed[T](implicit fsu: Decoder[T]): ParamDefAux[Named[T], T] =
+    implicit def forNamed[T](implicit decoder: Decoder[T]): ParamDefAux[Named[T], T] =
       extractParameter[Named[T], T](nr => extract(nr.name), nr => Seq(nr.name))
 
-    implicit def forNamedOption[T](implicit fsu: Decoder[Option[T]]): ParamDefAux[NamedOption[T], Option[T]] =
+    implicit def forNamedOption[T](implicit decoder: Decoder[Option[T]]): ParamDefAux[NamedOption[T], Option[T]] =
       extractParameter[NamedOption[T], Option[T]](nr => extract(nr.name), nr => Seq(nr.name))
 
-    implicit def forTuple[T, L <: HList, M <: HList, S <: HList, Out](
+    implicit def forTuple[T <: Product, L <: HList, M <: HList, S <: HList, Out](
         implicit
         genFrom: Generic.Aux[T, L],
         mapper: Mapper.Aux[magnetize.type, L, M],
@@ -142,5 +170,7 @@ object ReadOps {
       implicit def namedOption[M](implicit pd: ParamDef[NamedOption[M]]) =
         at[NamedOption[M]](nr => BinMagnet.apply(nr)(pd))
     }
+
   }
+
 }

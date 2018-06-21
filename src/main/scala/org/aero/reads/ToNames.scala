@@ -1,5 +1,7 @@
 package org.aero.reads
 
+import scala.language.implicitConversions
+
 class Named[T](val name: String) {
   def as[B] = new Named[B](name)
   def ? = new NamedOption[T](name)

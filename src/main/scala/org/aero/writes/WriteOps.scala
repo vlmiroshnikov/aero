@@ -1,6 +1,9 @@
 package org.aero.writes
 
-import com.aerospike.client.listener.WriteListener
+import java.time.Instant
+import java.util.Calendar
+
+import com.aerospike.client.listener.DeleteListener
 import com.aerospike.client.policy.WritePolicy
 import com.aerospike.client.{AerospikeException, Bin, Key}
 import org.aero.common.KeyWrapper
@@ -11,9 +14,37 @@ import shapeless.{Generic, HList, Poly2}
 
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{Future, Promise}
+import scala.util.Success
 import scala.util.control.NonFatal
 
 trait WriteOps {
+  def append[K](key: K, magnet: WBinMagnet, ttl: Option[FiniteDuration] = None)(implicit aec: AeroContext,
+                                                                                kw: KeyWrapper[K],
+                                                                                schema: Schema): Future[Unit] = {
+
+    val promise = Promise[Unit]()
+
+    aec.exec { (ac, loop) =>
+      val defaultPolicy = ac.writePolicyDefault
+
+      val policy = ttl.map { ttl =>
+        val modified = new WritePolicy(defaultPolicy)
+        modified.expiration = ttl.toSeconds.toInt
+        modified
+      } getOrElse defaultPolicy
+
+      try {
+        val bins = magnet().asInstanceOf[Seq[Bin]]
+        val k = new Key(schema.namespace, schema.set, kw.value(key))
+        ac.append(loop, Listeners.writeInstance(promise), policy, k, bins: _*)
+      } catch {
+        case NonFatal(e) =>
+          promise.failure(e)
+      }
+    }
+    promise.future
+  }
+
   def put[K](key: K, magnet: WBinMagnet, ttl: Option[FiniteDuration] = None)(implicit aec: AeroContext,
                                                                              kw: KeyWrapper[K],
                                                                              schema: Schema): Future[Unit] = {
@@ -28,21 +59,47 @@ trait WriteOps {
 
       val promise = Promise[Unit]()
 
-      val listener = new WriteListener {
-        override def onFailure(exception: AerospikeException): Unit =
-          promise.failure(exception)
-
-        override def onSuccess(key: Key): Unit = promise.success(())
-      }
-
       try {
         val bins = magnet().asInstanceOf[Seq[Bin]]
         val k = new Key(schema.namespace, schema.set, kw.value(key))
-        ac.put(loop, listener, policy, k, bins: _*)
+        ac.put(loop, Listeners.writeInstance(promise), policy, k, bins: _*)
       } catch {
         case NonFatal(e) =>
           promise.failure(e)
       }
+      promise.future
+    }
+  }
+
+  def truncate(beforeLastUpdate: Instant)(implicit aec: AeroContext, schema: Schema): Unit = {
+    aec.exec { (ac, _) =>
+      val calendar = Calendar.getInstance()
+      calendar.setTimeInMillis(beforeLastUpdate.toEpochMilli)
+      ac.truncate(ac.infoPolicyDefault, schema.namespace, schema.set, calendar)
+    }
+  }
+
+  def delete[K](key: K)(implicit aec: AeroContext, kw: KeyWrapper[K], schema: Schema): Future[Boolean] = {
+    aec.exec { (ac, loop) =>
+      val promise = Promise[Boolean]()
+      val listener = new DeleteListener {
+        override def onFailure(exception: AerospikeException): Unit = {
+          promise.failure(exception)
+        }
+
+        override def onSuccess(key: Key, existed: Boolean): Unit = {
+          promise.complete(Success(existed))
+        }
+      }
+
+      try {
+        val k = new Key(schema.namespace, schema.set, kw.value(key))
+        ac.delete(loop, listener, ac.writePolicyDefault, k)
+      } catch {
+        case NonFatal(e) =>
+          promise.failure(e)
+      }
+
       promise.future
     }
   }
@@ -56,7 +113,7 @@ object WriteOps {
   }
 
   object WBinMagnet {
-    implicit def apply[T](value: T)(implicit wpd: WriteParamDef[T]) = new WBinMagnet {
+    implicit def apply[T](value: T)(implicit wpd: WriteParamDef[T]): WBinMagnet = new WBinMagnet {
       type Out = wpd.Out
       override def apply(): Out = wpd.apply(value)
     }
@@ -80,10 +137,9 @@ object WriteOps {
     implicit def forWBin[T](implicit enc: Encoder[T]): WriteParamDefAux[WBin[T], List[Bin]] =
       writeParamDef(a => List(new Bin(a.name, enc.encode(a.value))))
 
-    implicit def fopTuple[T, L <: HList](
-        implicit
-        gen: Generic.Aux[T, L],
-        folder: hlist.LeftFolder[L, List[Bin], Reducer.type]
+    implicit def fopTuple[T <: Product, L <: HList, Out](
+        implicit gen: Generic.Aux[T, L],
+        folder: hlist.LeftFolder.Aux[L, List[Bin], Reducer.type, Out]
     ): WriteParamDefAux[T, folder.Out] =
       writeParamDef { p =>
         gen.to(p).foldLeft(List.empty[Bin])(Reducer)
