@@ -11,3 +11,4 @@ object AeroOps
     with DefaultDecoders
     with DefaultEncoders
     with DefaultKeyWrappers
+    with ValueBinOps

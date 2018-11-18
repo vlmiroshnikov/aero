@@ -1,7 +1,7 @@
 package org.aero.reads
 
 import com.aerospike.client.Record
-import org.aero.reads.ReadOps.BinMagnet
+import org.aero.reads.ReadOps.BinSchemaMagnet
 import shapeless._
 
 private[reads] trait HListTransformer[L <: HList] {
@@ -17,11 +17,11 @@ private[reads] object HListTransformer {
     def transform(i: Record, l: HNil): HNil = l
   }
 
-  implicit def caseCons[S, B <: BinMagnet, T <: HList, O <: HList](implicit ev: Aux[T, O]) =
+  implicit def caseCons[S, B <: BinSchemaMagnet, T <: HList, O <: HList](implicit ev: Aux[T, O]) =
     new HListTransformer[B :: T] {
       type Out = B#Out :: O
       def transform(i: Record, l: B :: T): B#Out :: O = {
-        val (head :: tail) = l
+        val head :: tail = l
         head.extract(i) :: ev.transform(i, tail)
       }
     }

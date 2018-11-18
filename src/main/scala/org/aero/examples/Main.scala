@@ -4,7 +4,6 @@ import org.aero.AeroOps._
 import org.aero._
 
 import scala.concurrent.Await
-import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 
 object Main {
@@ -12,24 +11,28 @@ object Main {
     val host = "localhost"
     val port = 3000
 
-    implicit val schema = Schema("test", "sample")
-    implicit val ac = AeroClient(host, port)
+    implicit val schema: Schema = Schema("test", "sample")
+    implicit val ac: AeroClient = AeroClient(host, port)
 
-    val eventualUnit = for {
-      _ <- put("001", WriteBin("123", "asdasd"))
-      _ <- put("002", (WriteBin("key", "002"), WriteBin("string_column", "string"), WriteBin("double_column", 1.1)))
-      _ <- put(
-        "003",
-        (WriteBin("key", "003"), WriteBin("list_column", List("string")), WriteBin("map_column", Map("key" -> "value")))
-      )
-      (key, value) <- get("002", ("key".as[String], "double_column".as[Double]))
-      optionResult <- getOpt("002", "string_column".as[String])
-    } yield {
-      println(s"$key = $value") //  print 002 = 1.1
-      println(optionResult) //  print Some(String)
-    }
+    case class Data(key: String, name: String, sdamole: Int, parama: Double)
 
-    Await.ready(eventualUnit, Duration.Inf)
+    val dd = Data("005", "aa", 11, 1200.12)
+
+    get[Data]("005")
+    Await.ready(put("005", dd), Duration.Inf)
+
+
+
+//    val eventualUnit = for {
+////      _ <- put("002", ("key" ->> "002", "string_column" ->> "string", "double_column" ->> 1.1))
+//      _ <- put("002", dd)
+////      _ <- put("003", ("key" ->> "003", "list_column" ->> List("string"), "map_column" ->> Map("key" -> "value")))
+//
+////      (key, value) <- get("002", ("key".as[String], "double_column".as[Double]))
+////      optionResult <- getOpt("002", "string_column".as[String])
+//    } yield ()
+
+    //Await.ready(eventualUnit, Duration.Inf)
     ac.close()
   }
 }

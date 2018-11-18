@@ -3,7 +3,7 @@ package org.aero.reads
 import com.aerospike.client.listener.{ExistsListener, RecordListener}
 import com.aerospike.client.{AerospikeException, Key, Record}
 import org.aero.common.KeyWrapper
-import org.aero.reads.ReadOps.BinMagnet
+import org.aero.reads.ReadOps.BinSchemaMagnet
 import org.aero.{AeroContext, Schema}
 import shapeless.ops.hlist._
 import shapeless._
@@ -11,13 +11,18 @@ import shapeless._
 import scala.concurrent.{Future, Promise}
 import scala.util.control.NonFatal
 import scala.util.{Success, Try}
+import org.aero.common.KeyBuilder._
 
 trait ReadOps {
-  def get[K](key: K,
-             magnet: BinMagnet)(implicit aec: AeroContext, kw: KeyWrapper[K], schema: Schema): Future[magnet.Out] =
+
+  def get[K, V <: Product](key: K)(implicit aec: AeroContext, kw: KeyWrapper[K], schema: Schema): Future[V] = {}
+
+  def get[K](key: K, magnet: BinSchemaMagnet)(implicit aec: AeroContext,
+                                              kw: KeyWrapper[K],
+                                              schema: Schema): Future[magnet.Out] =
     aec.exec { (ac, loop) =>
       val defaultPolicy = ac.readPolicyDefault
-      val promise = Promise[magnet.Out]()
+      val promise       = Promise[magnet.Out]()
 
       val listener = new RecordListener {
         override def onFailure(exception: AerospikeException): Unit =
@@ -33,8 +38,7 @@ trait ReadOps {
       }
 
       try {
-        val k = new Key(schema.namespace, schema.set, kw.value(key))
-        ac.get(loop, listener, defaultPolicy, k, magnet.names: _*)
+        ac.get(loop, listener, defaultPolicy, make(key), magnet.names: _*)
       } catch {
         case NonFatal(e) =>
           promise.failure(e)
@@ -42,12 +46,12 @@ trait ReadOps {
       promise.future
     }
 
-  def getOpt[K](key: K, magnet: BinMagnet)(implicit aec: AeroContext,
-                                           kw: KeyWrapper[K],
-                                           schema: Schema): Future[Option[magnet.Out]] =
+  def getOpt[K](key: K, magnet: BinSchemaMagnet)(implicit aec: AeroContext,
+                                                 kw: KeyWrapper[K],
+                                                 schema: Schema): Future[Option[magnet.Out]] =
     aec.exec { (ac, loop) =>
       val defaultPolicy = ac.readPolicyDefault
-      val promise = Promise[Option[magnet.Out]]()
+      val promise       = Promise[Option[magnet.Out]]()
 
       val listener = new RecordListener {
         override def onFailure(exception: AerospikeException): Unit =
@@ -60,8 +64,7 @@ trait ReadOps {
       }
 
       try {
-        val k = new Key(schema.namespace, schema.set, kw.value(key))
-        ac.get(loop, listener, defaultPolicy, k, magnet.names: _*)
+        ac.get(loop, listener, defaultPolicy, make(key), magnet.names: _*)
       } catch {
         case NonFatal(e) =>
           promise.failure(e)
@@ -72,7 +75,7 @@ trait ReadOps {
   def exists[K](key: K)(implicit aec: AeroContext, kw: KeyWrapper[K], schema: Schema): Future[Boolean] = {
     aec.exec { (ac, loop) =>
       val defaultPolicy = ac.readPolicyDefault
-      val promise = Promise[Boolean]()
+      val promise       = Promise[Boolean]()
 
       val listener = new ExistsListener {
         override def onFailure(exception: AerospikeException): Unit = {
@@ -85,8 +88,7 @@ trait ReadOps {
       }
 
       try {
-        val k = new Key(schema.namespace, schema.set, kw.value(key))
-        ac.exists(loop, listener, defaultPolicy, k)
+        ac.exists(loop, listener, defaultPolicy, make(key))
       } catch {
         case NonFatal(e) =>
           promise.failure(e)
@@ -98,21 +100,22 @@ trait ReadOps {
 
 object ReadOps {
 
-  trait BinMagnet {
+  trait BinSchemaMagnet {
     type Out
 
     def names: Seq[String]
     def extract(in: Record): Out
   }
 
-  object BinMagnet {
-    implicit def apply[K](name: K)(implicit pdef: ParamDef[K]): BinMagnet { type Out = pdef.Out } = new BinMagnet {
-      type Out = pdef.Out
+  object BinSchemaMagnet {
+    implicit def apply[T](name: T)(implicit pdef: ParamDef[T]): BinSchemaMagnet { type Out = pdef.Out } =
+      new BinSchemaMagnet {
+        type Out = pdef.Out
 
-      override def names: Seq[String] = pdef.names(name)
-      override def extract(rec: Record): Out =
-        pdef.apply(rec, name)
-    }
+        override def names: Seq[String] = pdef.names(name)
+        override def extract(rec: Record): Out =
+          pdef.apply(rec, name)
+      }
   }
 
   type ParamDefAux[T, U] = ParamDef[T] { type Out = U }
@@ -129,7 +132,7 @@ object ReadOps {
       new ParamDef[A] {
         type Out = B
 
-        def names(a: A): Seq[String] = gn(a)
+        def names(a: A): Seq[String]    = gn(a)
         def apply(r: Record, a: A): Out = f(a)(r)
       }
 
@@ -152,7 +155,7 @@ object ReadOps {
         mapper: Mapper.Aux[magnetize.type, L, M],
         mm: HListTransformer.Aux[M, S],
         tupler: Tupler.Aux[S, Out],
-        travers: ToTraversable.Aux[M, List, BinMagnet]
+        travers: ToTraversable.Aux[M, List, BinSchemaMagnet]
     ): ParamDefAux[T, tupler.Out] =
       paramDef[T, tupler.Out](
         params => {
@@ -160,17 +163,16 @@ object ReadOps {
           record =>
             mat.map(record).tupled
         },
-        params => genFrom.to(params).map(magnetize).toList[BinMagnet].flatMap(_.names)
+        params => genFrom.to(params).map(magnetize).toList[BinSchemaMagnet].flatMap(_.names)
       )
+
 
     object magnetize extends Poly1 {
       implicit def named[M](implicit pd: ParamDef[Named[M]]) =
-        at[Named[M]](nr => BinMagnet.apply(nr)(pd))
+        at[Named[M]](nr => BinSchemaMagnet.apply(nr)(pd))
 
       implicit def namedOption[M](implicit pd: ParamDef[NamedOption[M]]) =
-        at[NamedOption[M]](nr => BinMagnet.apply(nr)(pd))
+        at[NamedOption[M]](nr => BinSchemaMagnet.apply(nr)(pd))
     }
-
   }
-
 }
