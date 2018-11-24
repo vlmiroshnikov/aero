@@ -12,3 +12,4 @@ object AeroOps
     with DefaultEncoders
     with DefaultKeyWrappers
     with ValueBinOps
+    with TypePinOps

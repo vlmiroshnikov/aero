@@ -7,15 +7,114 @@ import org.aero.reads.ReadOps.BinSchemaMagnet
 import org.aero.{AeroContext, Schema}
 import shapeless.ops.hlist._
 import shapeless._
+import shapeless.ops.record._
 
 import scala.concurrent.{Future, Promise}
 import scala.util.control.NonFatal
 import scala.util.{Success, Try}
 import org.aero.common.KeyBuilder._
+import org.aero.writes.PartialEncoder
+import shapeless.ops.record.Keys
+import shapeless.tag.Tagged
+
+trait TypePin {
+  type Out
+}
+
+trait Converter[T] {
+  def decode(m: Record): T
+  def names: List[String]
+}
+
+trait Encoder {
+  type Out
+  def converter: Converter[Out]
+}
+
+object as {
+  def apply[T <: Product]: TypePin.Aux[T] = new TypePin {
+    type Out = T
+  }
+}
+
+object TypePin {
+  type Aux[Repr] = TypePin { type Out = Repr }
+}
+
+trait TypePinOps {
+  import shapeless.ops.record._
+
+  object symbolName extends Poly1 {
+    implicit def atTaggedSymbol[T] = at[Symbol with Tagged[T]](_.name)
+  }
+
+  implicit def toConverter[T, R <: HList, L <: HList, Z <: HList](tp: TypePin.Aux[T])(
+      implicit gen: LabelledGeneric.Aux[T, R],
+      fromMap: FromRecord[R],
+      keys: Keys.Aux[R, L],
+      mapper: Mapper.Aux[symbolName.type, L, Z],
+      traversable: ToTraversable.Aux[Z, List, String],
+  ): Encoder = {
+    new Encoder {
+      type Out = tp.Out
+      def converter: Converter[Out] = new Converter[Out] {
+        def decode(m: Record): Out = {
+          fromMap(m).map(gen.from).getOrElse(throw new Exception("Encoding failure"))
+        }
+        override def names: List[String] = {
+          traversable.apply(keys().map(symbolName))
+        }
+      }
+    }
+  }
+}
+
+//object as {
+//  def apply[T]: TypePin = new TypePin {
+//    type Out = T
+//
+//    def decode[R <: HList](m: Record)(implicit gen: LabelledGeneric.Aux[Out, R], fromMap: FromMap[R]): T = {
+//      fromMap(m).map(gen.from).getOrElse(throw new Exception("Encoding failure"))
+//    }
+//
+//    override def names[R <: HList, L <: HList](implicit gen: LabelledGeneric.Aux[Out, R],
+//                                               keys: Keys.Aux[R, L],
+//                                               traversable: ToTraversable.Aux[L, List, String]): List[String] = {
+//      keys().toList.map(_.toString)
+//    }
+//  }
+//}
 
 trait ReadOps {
 
-  def get[K, V <: Product](key: K)(implicit aec: AeroContext, kw: KeyWrapper[K], schema: Schema): Future[V] = {}
+  def get_[K](key: K, um: Encoder)(implicit aec: AeroContext, kw: KeyWrapper[K], schema: Schema): Future[um.Out] = {
+
+    aec.exec { (ac, loop) =>
+      val defaultPolicy = ac.readPolicyDefault
+      val promise       = Promise[um.Out]()
+
+      val listener = new RecordListener {
+        override def onFailure(exception: AerospikeException): Unit =
+          promise.failure(exception)
+
+        override def onSuccess(key: Key, record: Record): Unit =
+          Option(record) match {
+            case None =>
+              promise.failure(KeyNotFoundException(s"${key.namespace}:${key.setName}:${key.userKey}"))
+            case Some(rec) =>
+              promise.complete(Try(um.converter.decode(rec)))
+          }
+      }
+
+      try {
+        ac.get(loop, listener, defaultPolicy, make(key), um.converter.names: _*)
+      } catch {
+        case NonFatal(e) =>
+          promise.failure(e)
+      }
+      promise.future
+    }
+  }
 
   def get[K](key: K, magnet: BinSchemaMagnet)(implicit aec: AeroContext,
                                               kw: KeyWrapper[K],
@@ -108,13 +207,13 @@ object ReadOps {
   }
 
   object BinSchemaMagnet {
-    implicit def apply[T](name: T)(implicit pdef: ParamDef[T]): BinSchemaMagnet { type Out = pdef.Out } =
+    implicit def apply[T](obj: T)(implicit pdef: ParamDef[T]): BinSchemaMagnet { type Out = pdef.Out } =
       new BinSchemaMagnet {
         type Out = pdef.Out
 
-        override def names: Seq[String] = pdef.names(name)
+        override def names: Seq[String] = pdef.names(obj)
         override def extract(rec: Record): Out =
-          pdef.apply(rec, name)
+          pdef.apply(rec, obj)
       }
   }
 
@@ -139,14 +238,16 @@ object ReadOps {
     private def extractParameter[A, B](f: A => Record => B, gn: A => Seq[String]): ParamDefAux[A, B] =
       paramDef(f, gn)
 
-    private def extract[B](key: String)(implicit decoder: Decoder[B]): Record => B = { r =>
+    private def extract[B](key: String)(implicit decoder: PartialDecoder[B]): Record => B = { r =>
       decoder.decode(r, key)
     }
 
-    implicit def forNamed[T](implicit decoder: Decoder[T]): ParamDefAux[Named[T], T] =
+    implicit def forNamed[T](implicit decoder: PartialDecoder[T]): ParamDefAux[Named[T], T] =
       extractParameter[Named[T], T](nr => extract(nr.name), nr => Seq(nr.name))
 
-    implicit def forNamedOption[T](implicit decoder: Decoder[Option[T]]): ParamDefAux[NamedOption[T], Option[T]] =
+    implicit def forNamedOption[T](
+        implicit decoder: PartialDecoder[Option[T]]
+    ): ParamDefAux[NamedOption[T], Option[T]] =
       extractParameter[NamedOption[T], Option[T]](nr => extract(nr.name), nr => Seq(nr.name))
 
     implicit def forTuple[T <: Product, L <: HList, M <: HList, S <: HList, Out](
@@ -165,7 +266,6 @@ object ReadOps {
         },
         params => genFrom.to(params).map(magnetize).toList[BinSchemaMagnet].flatMap(_.names)
       )
-
 
     object magnetize extends Poly1 {
       implicit def named[M](implicit pd: ParamDef[Named[M]]) =

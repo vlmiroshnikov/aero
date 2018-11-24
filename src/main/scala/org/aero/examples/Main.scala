@@ -1,8 +1,12 @@
 package org.aero.examples
 
+import com.aerospike.client.{Record, Value}
 import org.aero.AeroOps._
 import org.aero._
+import org.aero.reads.{PartialDecoder, as}
+import org.aero.writes.PartialEncoder
 
+import scala.collection.JavaConverters._
 import scala.concurrent.Await
 import scala.concurrent.duration._
 
@@ -14,14 +18,23 @@ object Main {
     implicit val schema: Schema = Schema("test", "sample")
     implicit val ac: AeroClient = AeroClient(host, port)
 
-    case class Data(key: String, name: String, sdamole: Int, parama: Double)
+    implicit val encoder: PartialEncoder[Nested] = (v: Nested) => Value.get(Map("aa" -> v.aa, "bbb" -> v.bbb).asJava)
 
-    val dd = Data("005", "aa", 11, 1200.12)
+    implicit val encoder1: PartialEncoder[BigDecimal] = (v: BigDecimal) => Value.get(v.doubleValue())
 
-    get[Data]("005")
+    implicit val decoder: PartialDecoder[BigDecimal] =
+      (a: Record, key: _root_.scala.Predef.String) => {
+        a.getDouble(key)
+      }
+
+    case class Nested(aa: Int, bbb: String)
+    case class Data(key: String, name: String, bd: BigDecimal)
+
+    val dd = Data("005", "aa", 11)
+
     Await.ready(put("005", dd), Duration.Inf)
-
-
+    val value = get_("005", as[Data])
+    println(Await.result(value, Duration.Inf))
 
 //    val eventualUnit = for {
 ////      _ <- put("002", ("key" ->> "002", "string_column" ->> "string", "double_column" ->> 1.1))

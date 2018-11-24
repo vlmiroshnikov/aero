@@ -132,7 +132,7 @@ object WriteOps {
         override def apply(p: A): Out = f(p)
       }
 
-    implicit def forWBin[T](implicit enc: Encoder[T]): WriteParamDefAux[ValueBin[T], List[Bin]] =
+    implicit def forWBin[T](implicit enc: PartialEncoder[T]): WriteParamDefAux[ValueBin[T], List[Bin]] =
       writeParamDef(a => List(new Bin(a.name, enc.encode(a.value))))
 
     implicit def fopTuple[T <: Product, L <: HList, Out](
@@ -161,9 +161,7 @@ object WriteOps {
     }
 
     object Reducer extends Poly2 {
-      implicit def from[T](implicit pdma: WriteParamDefAux[T, List[Bin]]): Reducer.Case[List[Bin], T] {
-        type Result = List[Bin]
-      } = {
+      implicit def from[T](implicit pdma: WriteParamDefAux[T, List[Bin]]) = {
         at[List[Bin], T] { (a, t) =>
           a ::: pdma(t)
         }
