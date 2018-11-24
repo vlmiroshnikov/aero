@@ -22,7 +22,7 @@ private[reads] object HListTransformer {
       type Out = B#Out :: O
       def transform(i: Record, l: B :: T): B#Out :: O = {
         val head :: tail = l
-        head.extract(i) :: ev.transform(i, tail)
+        head.decode(i) :: ev.transform(i, tail)
       }
     }
 }

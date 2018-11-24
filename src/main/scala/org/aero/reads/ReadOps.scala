@@ -2,28 +2,26 @@ package org.aero.reads
 
 import com.aerospike.client.listener.{ExistsListener, RecordListener}
 import com.aerospike.client.{AerospikeException, Key, Record}
+import org.aero.common.KeyBuilder._
 import org.aero.common.KeyWrapper
 import org.aero.reads.ReadOps.BinSchemaMagnet
 import org.aero.{AeroContext, Schema}
-import shapeless.ops.hlist._
 import shapeless._
+import shapeless.ops.hlist._
 import shapeless.ops.record._
+import shapeless.tag.Tagged
 
 import scala.concurrent.{Future, Promise}
 import scala.util.control.NonFatal
 import scala.util.{Success, Try}
-import org.aero.common.KeyBuilder._
-import org.aero.writes.PartialEncoder
-import shapeless.ops.record.Keys
-import shapeless.tag.Tagged
 
-trait TypePin {
+trait TypeMagnet {
   type Out
 }
 
 trait Converter[T] {
   def decode(m: Record): T
-  def names: List[String]
+  def keys: List[String]
 }
 
 trait Encoder {
@@ -32,26 +30,26 @@ trait Encoder {
 }
 
 object as {
-  def apply[T <: Product]: TypePin.Aux[T] = new TypePin {
+  def apply[T <: Product]: TypeMagnet.Aux[T] = new TypeMagnet {
     type Out = T
   }
 }
 
-object TypePin {
-  type Aux[Repr] = TypePin { type Out = Repr }
+object TypeMagnet {
+  type Aux[Repr] = TypeMagnet { type Out = Repr }
 }
 
-trait TypePinOps {
-  import shapeless.ops.record._
-
-  object symbolName extends Poly1 {
-    implicit def atTaggedSymbol[T] = at[Symbol with Tagged[T]](_.name)
+trait TypeMagnetOps {
+  private object symbolName extends Poly1 {
+    implicit def atTaggedSymbol[T]: Case[Symbol with Tagged[T]] {
+      type Result = String
+    } = at[Symbol with Tagged[T]](_.name)
   }
 
-  implicit def toConverter[T, R <: HList, L <: HList, Z <: HList](tp: TypePin.Aux[T])(
+  implicit def toConverter[T, R <: HList, L <: HList, Z <: HList](tp: TypeMagnet.Aux[T])(
       implicit gen: LabelledGeneric.Aux[T, R],
       fromMap: FromRecord[R],
-      keys: Keys.Aux[R, L],
+      keysFrom: Keys.Aux[R, L],
       mapper: Mapper.Aux[symbolName.type, L, Z],
       traversable: ToTraversable.Aux[Z, List, String],
   ): Encoder = {
@@ -61,53 +59,29 @@ trait TypePinOps {
         def decode(m: Record): Out = {
           fromMap(m).map(gen.from).getOrElse(throw new Exception("Encoding failure"))
         }
-        override def names: List[String] = {
-          traversable.apply(keys().map(symbolName))
+        override def keys: List[String] = {
+          traversable.apply(keysFrom().map(symbolName))
         }
       }
     }
   }
 }
 
-//object as {
-//  def apply[T]: TypePin = new TypePin {
-//    type Out = T
-//
-//    def decode[R <: HList](m: Record)(implicit gen: LabelledGeneric.Aux[Out, R], fromMap: FromMap[R]): T = {
-//      fromMap(m).map(gen.from).getOrElse(throw new Exception("Encoding failure"))
-//    }
-//
-//    override def names[R <: HList, L <: HList](implicit gen: LabelledGeneric.Aux[Out, R],
-//                                               keys: Keys.Aux[R, L],
-//                                               traversable: ToTraversable.Aux[L, List, String]): List[String] = {
-//      keys().toList.map(_.toString)
-//    }
-//  }
-//}
-
 trait ReadOps {
 
-  def get_[K](key: K, um: Encoder)(implicit aec: AeroContext, kw: KeyWrapper[K], schema: Schema): Future[um.Out] = {
+  def getAs[K](key: K,
+               encoder: Encoder)(implicit aec: AeroContext, kw: KeyWrapper[K], schema: Schema): Future[encoder.Out] = {
 
     aec.exec { (ac, loop) =>
       val defaultPolicy = ac.readPolicyDefault
-      val promise       = Promise[um.Out]()
+      val promise       = Promise[encoder.Out]()
 
-      val listener = new RecordListener {
-        override def onFailure(exception: AerospikeException): Unit =
-          promise.failure(exception)
+      def onSuccess(record: Record): Unit =
+        promise.complete(Try(encoder.converter.decode(record)))
 
-        override def onSuccess(key: Key, record: Record): Unit =
-          Option(record) match {
-            case None =>
-              promise.failure(KeyNotFoundException(s"${key.namespace}:${key.setName}:${key.userKey}"))
-            case Some(rec) =>
-              promise.complete(Try(um.converter.decode(rec)))
-          }
-      }
-
+      val listener = Listeners.recordListener(onSuccess, promise.failure(_))
       try {
-        ac.get(loop, listener, defaultPolicy, make(key), um.converter.names: _*)
+        ac.get(loop, listener, defaultPolicy, make(key), encoder.converter.keys: _*)
       } catch {
         case NonFatal(e) =>
           promise.failure(e)
@@ -123,21 +97,13 @@ trait ReadOps {
       val defaultPolicy = ac.readPolicyDefault
       val promise       = Promise[magnet.Out]()
 
-      val listener = new RecordListener {
-        override def onFailure(exception: AerospikeException): Unit =
-          promise.failure(exception)
+      def onSuccess(record: Record): Unit =
+        promise.complete(Try(magnet.decode(record)))
 
-        override def onSuccess(key: Key, record: Record): Unit =
-          Option(record) match {
-            case None =>
-              promise.failure(KeyNotFoundException(s"${key.namespace}:${key.setName}:${key.userKey}"))
-            case Some(rec) =>
-              promise.complete(Try(magnet.extract(rec)))
-          }
-      }
+      val listener = Listeners.recordListener(onSuccess, promise.failure(_))
 
       try {
-        ac.get(loop, listener, defaultPolicy, make(key), magnet.names: _*)
+        ac.get(loop, listener, defaultPolicy, make(key), magnet.keys: _*)
       } catch {
         case NonFatal(e) =>
           promise.failure(e)
@@ -152,18 +118,13 @@ trait ReadOps {
       val defaultPolicy = ac.readPolicyDefault
       val promise       = Promise[Option[magnet.Out]]()
 
-      val listener = new RecordListener {
-        override def onFailure(exception: AerospikeException): Unit =
-          promise.failure(exception)
+      def onSuccess(recordOpt: Option[Record]): Unit =
+        promise.complete(Try(recordOpt.map(rec => magnet.decode(rec))))
 
-        override def onSuccess(key: Key, record: Record): Unit =
-          promise.complete(Try(Option(record) map { rec =>
-            magnet.extract(rec)
-          }))
-      }
+      val listener = Listeners.recordOptListener(onSuccess, promise.failure(_))
 
       try {
-        ac.get(loop, listener, defaultPolicy, make(key), magnet.names: _*)
+        ac.get(loop, listener, defaultPolicy, make(key), magnet.keys: _*)
       } catch {
         case NonFatal(e) =>
           promise.failure(e)
@@ -202,8 +163,8 @@ object ReadOps {
   trait BinSchemaMagnet {
     type Out
 
-    def names: Seq[String]
-    def extract(in: Record): Out
+    def keys: Seq[String]
+    def decode(in: Record): Out
   }
 
   object BinSchemaMagnet {
@@ -211,8 +172,8 @@ object ReadOps {
       new BinSchemaMagnet {
         type Out = pdef.Out
 
-        override def names: Seq[String] = pdef.names(obj)
-        override def extract(rec: Record): Out =
+        override def keys: Seq[String] = pdef.keys(obj)
+        override def decode(rec: Record): Out =
           pdef.apply(rec, obj)
       }
   }
@@ -222,7 +183,7 @@ object ReadOps {
   sealed trait ParamDef[T] {
     type Out
 
-    def names(key: T): Seq[String]
+    def keys(key: T): Seq[String]
     def apply(r: Record, key: T): Out
   }
 
@@ -231,7 +192,7 @@ object ReadOps {
       new ParamDef[A] {
         type Out = B
 
-        def names(a: A): Seq[String]    = gn(a)
+        def keys(a: A): Seq[String]     = gn(a)
         def apply(r: Record, a: A): Out = f(a)(r)
       }
 
@@ -264,7 +225,7 @@ object ReadOps {
           record =>
             mat.map(record).tupled
         },
-        params => genFrom.to(params).map(magnetize).toList[BinSchemaMagnet].flatMap(_.names)
+        params => genFrom.to(params).map(magnetize).toList[BinSchemaMagnet].flatMap(_.keys)
       )
 
     object magnetize extends Poly1 {
@@ -275,4 +236,29 @@ object ReadOps {
         at[NamedOption[M]](nr => BinSchemaMagnet.apply(nr)(pd))
     }
   }
+}
+
+object Listeners {
+  def recordListener(success: Record => Unit, failure: Exception => Unit): RecordListener =
+    new RecordListener {
+      override def onSuccess(key: Key, record: Record): Unit = {
+        Option(record) match {
+          case None =>
+            failure(KeyNotFoundException(s"${key.namespace}:${key.setName}:${key.userKey}"))
+          case Some(rec) =>
+            success(rec)
+        }
+      }
+      override def onFailure(exception: AerospikeException): Unit =
+        failure(exception)
+    }
+
+  def recordOptListener(success: Option[Record] => Unit, failure: Exception => Unit): RecordListener =
+    new RecordListener {
+      override def onSuccess(key: Key, record: Record): Unit = {
+        success(Option(record))
+      }
+      override def onFailure(exception: AerospikeException): Unit =
+        failure(exception)
+    }
 }
