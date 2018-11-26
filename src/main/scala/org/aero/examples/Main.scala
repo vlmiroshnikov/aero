@@ -14,7 +14,7 @@ object Main {
     val host = "localhost"
     val port = 3000
 
-    implicit val schema: Schema = Schema("test", "sample")
+    implicit val schema: Schema = Schema("prod", "antifraud")
     implicit val ac: AeroClient = AeroClient(host, port)
 
     implicit val encoder1: PartialEncoder[BigDecimal] = (v: BigDecimal) => Value.get(v.doubleValue())
@@ -34,8 +34,7 @@ object Main {
     println(Await.result(value, Duration.Inf))
 
 
-    get("002", ("key".as[String], "double_column".as[Double])
-
+    println(Await.result(get("002", ("key".as[String], "double_column".as[Double])), Duration.Inf))
 
 //    val eventualUnit = for {
 ////      _ <- put("002", ("key" ->> "002", "string_column" ->> "string", "double_column" ->> 1.1))
