@@ -12,6 +12,6 @@ object KeyWrapper {
 
 trait DefaultKeyWrappers {
   implicit val stringKW: KeyWrapper[String] = KeyWrapper(Value.get)
-  implicit val intKW: KeyWrapper[Int] = KeyWrapper(Value.get)
-  implicit val longKW: KeyWrapper[Long] = KeyWrapper(Value.get)
+  implicit val intKW: KeyWrapper[Int]       = KeyWrapper(Value.get)
+  implicit val longKW: KeyWrapper[Long]     = KeyWrapper(Value.get)
 }
