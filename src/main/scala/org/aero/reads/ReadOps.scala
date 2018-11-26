@@ -1,6 +1,6 @@
 package org.aero.reads
 
-import com.aerospike.client.listener.{ExistsListener, RecordListener}
+import com.aerospike.client.listener.{ExistsListener, RecordListener, RecordSequenceListener}
 import com.aerospike.client.{AerospikeException, Key, Record}
 import org.aero.common.KeyBuilder._
 import org.aero.common.KeyWrapper
@@ -69,6 +69,26 @@ trait TypeMagnetOps {
 
 trait ReadOps {
 
+  def scan[K](key: K, encoder: Encoder)(implicit aec: AeroContext, kw: KeyWrapper[K], schema: Schema) = {
+    aec.exec { (ac, loop) =>
+      val defaultPolicy = ac.scanPolicyDefault
+
+      val listener = new RecordSequenceListener {
+        override def onRecord(key: Key, record: Record): Unit = ???
+        override def onSuccess(): Unit = ???
+        override def onFailure(exception: AerospikeException): Unit = ???
+      }
+
+      try {
+        ac.scanAll(loop, listener, defaultPolicy, schema.namespace, schema.set, encoder.converter.keys: _*)
+      } catch {
+        case NonFatal(e) =>
+      }
+
+      ???
+    }
+  }
+
   def getAs[K](key: K,
                encoder: Encoder)(implicit aec: AeroContext, kw: KeyWrapper[K], schema: Schema): Future[encoder.Out] = {
 
@@ -80,6 +100,28 @@ trait ReadOps {
         promise.complete(Try(encoder.converter.decode(record)))
 
       val listener = Listeners.recordListener(onSuccess, promise.failure(_))
+      try {
+        ac.get(loop, listener, defaultPolicy, make(key), encoder.converter.keys: _*)
+      } catch {
+        case NonFatal(e) =>
+          promise.failure(e)
+      }
+      promise.future
+    }
+  }
+
+  def getAsOpt[K](key: K, encoder: Encoder)(implicit aec: AeroContext,
+                                            kw: KeyWrapper[K],
+                                            schema: Schema): Future[Option[encoder.Out]] = {
+
+    aec.exec { (ac, loop) =>
+      val defaultPolicy = ac.readPolicyDefault
+      val promise       = Promise[Option[encoder.Out]]()
+
+      def onSuccess(recordOpt: Option[Record]): Unit =
+        promise.complete(Try(recordOpt.map(rec => encoder.converter.decode(rec))))
+
+      val listener = Listeners.recordOptListener(onSuccess, promise.failure(_))
       try {
         ac.get(loop, listener, defaultPolicy, make(key), encoder.converter.keys: _*)
       } catch {
