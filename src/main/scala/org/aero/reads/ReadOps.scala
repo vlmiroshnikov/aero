@@ -90,8 +90,9 @@ trait ReadOps {
     }
   }
 
-  def getAsOpt[K](key: K,
-               encoder: Encoder)(implicit aec: AeroContext, kw: KeyWrapper[K], schema: Schema): Future[Option[encoder.Out]] = {
+  def getAsOpt[K](key: K, encoder: Encoder)(implicit aec: AeroContext,
+                                            kw: KeyWrapper[K],
+                                            schema: Schema): Future[Option[encoder.Out]] = {
 
     aec.exec { (ac, loop) =>
       val defaultPolicy = ac.readPolicyDefault
@@ -110,7 +111,6 @@ trait ReadOps {
       promise.future
     }
   }
-
 
   def get[K](key: K, magnet: BinSchemaMagnet)(implicit aec: AeroContext,
                                               kw: KeyWrapper[K],
