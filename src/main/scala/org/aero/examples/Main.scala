@@ -15,7 +15,7 @@ object Main {
     val port = 3000
 
     implicit val schema: Schema = Schema("prod", "antifraud")
-    implicit val ac: AeroClient = AeroClient(host, port)
+    implicit val ac: AeroClient = AeroClient(List(host), port)
 
     implicit val encoder1: PartialEncoder[BigDecimal] = (v: BigDecimal) => Value.get(v.doubleValue())
 

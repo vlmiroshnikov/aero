@@ -90,6 +90,28 @@ trait ReadOps {
     }
   }
 
+  def getAsOpt[K](key: K,
+               encoder: Encoder)(implicit aec: AeroContext, kw: KeyWrapper[K], schema: Schema): Future[Option[encoder.Out]] = {
+
+    aec.exec { (ac, loop) =>
+      val defaultPolicy = ac.readPolicyDefault
+      val promise       = Promise[Option[encoder.Out]]()
+
+      def onSuccess(recordOpt: Option[Record]): Unit =
+        promise.complete(Try(recordOpt.map(rec => encoder.converter.decode(rec))))
+
+      val listener = Listeners.recordOptListener(onSuccess, promise.failure(_))
+      try {
+        ac.get(loop, listener, defaultPolicy, make(key), encoder.converter.keys: _*)
+      } catch {
+        case NonFatal(e) =>
+          promise.failure(e)
+      }
+      promise.future
+    }
+  }
+
+
   def get[K](key: K, magnet: BinSchemaMagnet)(implicit aec: AeroContext,
                                               kw: KeyWrapper[K],
                                               schema: Schema): Future[magnet.Out] =
