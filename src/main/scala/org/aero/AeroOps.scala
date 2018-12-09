@@ -1,6 +1,6 @@
 package org.aero
 
-import org.aero.common.DefaultKeyWrappers
+import org.aero.common.{DefaultKeyDecoders, DefaultKeyEncoders}
 import org.aero.writes._
 import org.aero.reads._
 
@@ -10,6 +10,7 @@ object AeroOps
     with ToNames
     with DefaultDecoders
     with DefaultEncoders
-    with DefaultKeyWrappers
+    with DefaultKeyEncoders
+    with DefaultKeyDecoders
     with ValueBinOps
     with TypeMagnetOps

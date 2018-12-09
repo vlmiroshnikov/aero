@@ -7,7 +7,8 @@ import com.aerospike.client.policy.ClientPolicy
 object AeroClient {
   def apply(hosts: List[String], port: Int): AeroClient = new AeroClient {
     private val cp = new ClientPolicy() {
-      eventLoops = new NioEventLoops(new EventPolicy(), 1)
+      maxConnsPerNode = 5000
+      eventLoops = new NioEventLoops(new EventPolicy(), -1)
     }
 
     private val client = new AerospikeClient(cp, hosts.map(h => new Host(h, port)): _*)

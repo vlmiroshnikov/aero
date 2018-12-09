@@ -4,9 +4,9 @@ import java.time.Instant
 import java.util.Calendar
 
 import com.aerospike.client.listener.DeleteListener
-import com.aerospike.client.policy.WritePolicy
+import com.aerospike.client.policy.{CommitLevel, WritePolicy}
 import com.aerospike.client.{AerospikeException, Bin, Key}
-import org.aero.common.KeyWrapper
+import org.aero.common.KeyEncoder
 import org.aero.common.KeyBuilder.make
 import org.aero.writes.WriteOps.BinValueMagnet
 import org.aero.{AeroContext, Schema}
@@ -21,7 +21,7 @@ import scala.util.control.NonFatal
 
 trait WriteOps {
   def append[K](key: K, magnet: BinValueMagnet, ttl: Option[FiniteDuration] = None)(implicit aec: AeroContext,
-                                                                                    kw: KeyWrapper[K],
+                                                                                    kw: KeyEncoder[K],
                                                                                     schema: Schema): Future[Unit] = {
 
     val promise = Promise[Unit]()
@@ -46,10 +46,11 @@ trait WriteOps {
   }
 
   def put[K](key: K, magnet: BinValueMagnet, ttl: Option[FiniteDuration] = None)(implicit aec: AeroContext,
-                                                                                 kw: KeyWrapper[K],
+                                                                                 kw: KeyEncoder[K],
                                                                                  schema: Schema): Future[Unit] = {
     aec.exec { (ac, loop) =>
       val defaultPolicy = ac.writePolicyDefault
+      defaultPolicy.sendKey = true
 
       val policy = ttl.map { ttl =>
         val modified = new WritePolicy(defaultPolicy)
@@ -78,7 +79,7 @@ trait WriteOps {
     }
   }
 
-  def delete[K](key: K)(implicit aec: AeroContext, kw: KeyWrapper[K], schema: Schema): Future[Boolean] = {
+  def delete[K](key: K)(implicit aec: AeroContext, kw: KeyEncoder[K], schema: Schema): Future[Boolean] = {
     aec.exec { (ac, loop) =>
       val promise = Promise[Boolean]()
       val listener = new DeleteListener {
