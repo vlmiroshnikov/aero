@@ -1,0 +1,58 @@
+package org.aero.common
+import com.aerospike.client.listener.{DeleteListener, RecordListener, RecordSequenceListener, WriteListener}
+import com.aerospike.client.{AerospikeException, Key, Record, Value}
+import org.aero.AeroContext.Callback
+
+import scala.collection.mutable.ArrayBuffer
+import scala.util.Try
+
+object Listeners {
+
+  def deleteInstance(cb: Callback[Boolean]) = new DeleteListener {
+    override def onFailure(exception: AerospikeException): Unit = {
+      cb(Left(exception))
+    }
+
+    override def onSuccess(key: Key, existed: Boolean): Unit = {
+      cb(Right(existed))
+    }
+  }
+
+  def writeInstance(promise: Callback[Unit]): WriteListener = new WriteListener {
+    override def onFailure(exception: AerospikeException): Unit =
+      promise(Left(exception))
+    override def onSuccess(key: Key): Unit = promise(Right(()))
+  }
+
+  def recordOptListener[V](promise: Callback[Option[V]], encoder: Record => Try[V]): RecordListener =
+    new RecordListener {
+      override def onSuccess(key: Key, record: Record): Unit = {
+        Option(record).map(v => encoder(v).toEither).fold(promise(Right(Option.empty)))(v => promise(v.map(Option(_))))
+      }
+      override def onFailure(exception: AerospikeException): Unit =
+        promise(Left(exception))
+    }
+
+  def mkBatch[K, V](promise: Callback[Seq[(K, V)]],
+                    sizeHint: Int,
+                    encoder: (Value, Record) => Try[(K, V)]): RecordSequenceListener =
+    new RecordSequenceListener {
+      val builder = ArrayBuffer.newBuilder[(K, V)]
+      builder.sizeHint(sizeHint)
+
+      override def onRecord(key: Key, record: Record): Unit = {
+        if (record == null)
+          println(s"Key: ${key.userKey} not found")
+        Option(record).flatMap(v => encoder(key.userKey, v).toOption).foreach { tuple => // TODO log Error ???
+          builder += tuple
+        }
+      }
+
+      override def onSuccess(): Unit = {
+        promise(Right(builder.result().toVector))
+      }
+
+      override def onFailure(exception: AerospikeException): Unit =
+        promise(Left(exception))
+    }
+}

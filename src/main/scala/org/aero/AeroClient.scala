@@ -1,23 +1,33 @@
 package org.aero
 
-import com.aerospike.client.AerospikeClient
+import cats.effect.Async
+import com.aerospike.client.{AerospikeClient, Host}
 import com.aerospike.client.async._
 import com.aerospike.client.policy.ClientPolicy
+import org.aero.AeroContext.Callback
+
+import scala.language.higherKinds
 
 object AeroClient {
-  def apply(host: String, port: Int): AeroClient = new AeroClient {
+  def apply[F[_]](hosts: List[String], port: Int)(implicit F: Async[F]): AeroClient[F] = new AeroClient[F] {
     private val cp = new ClientPolicy() {
-      eventLoops = new NioEventLoops(new EventPolicy(), 1)
+      maxConnsPerNode = 1000
+      eventLoops = new NioEventLoops(new EventPolicy(), -1)
     }
 
-    private val client = new AerospikeClient(cp, host, port)
+    private val client = new AerospikeClient(cp, hosts.map(h => new Host(h, port)): _*)
 
-    override def exec[R](func: (AerospikeClient, EventLoop) => R): R =
-      func(client, cp.eventLoops.next)
+    override def exec[R](func: (AerospikeClient, EventLoop, Callback[R]) => Unit): F[R] = {
+      Async[F].async[R] { cb =>
+        func(client, cp.eventLoops.next, cb)
+      }
+    }
 
-    override def close(): Unit =
-      client.close()
+    def close(): F[Unit] =
+      F.delay(client.close())
   }
 }
 
-trait AeroClient extends AeroContext with AutoCloseable
+trait AeroClient[F[_]] extends AeroContext[F] {
+  def close(): F[Unit]
+}

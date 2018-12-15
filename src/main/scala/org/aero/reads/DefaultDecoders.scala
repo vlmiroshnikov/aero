@@ -6,6 +6,7 @@ import scala.collection.JavaConverters._
 trait DefaultDecoders {
   implicit val decoderBoolean: PartialDecoder[Boolean] = (a: Record, key: String) => { a.getBoolean(key) }
   implicit val decoderInt: PartialDecoder[Int]         = (a: Record, key: String) => { a.getInt(key) }
+  implicit val decoderLong: PartialDecoder[Long]       = (a: Record, key: String) => { a.getLong(key) }
   implicit val decoderString: PartialDecoder[String]   = (a: Record, key: String) => { a.getString(key) }
   implicit val decoderDouble: PartialDecoder[Double]   = (a: Record, key: String) => { a.getDouble(key) }
 

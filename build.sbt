@@ -1,13 +1,14 @@
+import Settings.Versions
 import sbt.Keys._
 
-lazy val `aero` = project
+lazy val aero = project
   .in(file("."))
   .settings(
-    version := "0.3.0",
-    scalaVersion := "2.12.7",
+    version       := "0.4.0",
+    scalaVersion  := Versions.scala,
     scalacOptions := Settings.scalacOptions,
     libraryDependencies ++= Settings.dependencies,
-    organization := "org.aero",
+    organization      := "org.aero",
     bintrayRepository := "aero",
     licenses += ("Apache-2.0", url("https://opensource.org/licenses/Apache-2.0")),
     pomExtra :=
@@ -18,4 +19,16 @@ lazy val `aero` = project
         </developer>
       </developers>,
     bintrayPackageLabels := Seq("scala", "aerospike")
+  )
+
+lazy val examples = project
+  .in(file("examples"))
+  .dependsOn(aero)
+  .settings(
+    version           := "0.1.0",
+    scalaVersion      := Versions.scala,
+    scalacOptions     := Settings.scalacOptions,
+    organization      := "org.aero",
+    bintrayRepository := "aero",
+    libraryDependencies ++= Settings.dependencies ++ Settings.extraDependencies,
   )
