@@ -3,10 +3,11 @@ package org.aero.writes
 import java.time.Instant
 import java.util.Calendar
 
+import cats.effect.Concurrent
 import com.aerospike.client.listener.DeleteListener
 import com.aerospike.client.policy.{CommitLevel, WritePolicy}
 import com.aerospike.client.{AerospikeException, Bin, Key}
-import org.aero.common.KeyEncoder
+import org.aero.common.{KeyEncoder, Listeners}
 import org.aero.common.KeyBuilder.make
 import org.aero.writes.WriteOps.BinValueMagnet
 import org.aero.{AeroContext, Schema}
@@ -19,87 +20,60 @@ import scala.concurrent.{Future, Promise}
 import scala.util.Success
 import scala.util.control.NonFatal
 
-trait WriteOps {
-  def append[K](key: K, magnet: BinValueMagnet, ttl: Option[FiniteDuration] = None)(implicit aec: AeroContext,
+trait WriteOps[F[_]] {
+  def append[K](key: K, magnet: BinValueMagnet, ttl: Option[FiniteDuration] = None)(implicit aec: AeroContext[F],
+                                                                                    F: Concurrent[F],
                                                                                     kw: KeyEncoder[K],
-                                                                                    schema: Schema): Future[Unit] = {
+                                                                                    schema: Schema): F[Unit] = {
 
-    val promise = Promise[Unit]()
-    aec.exec { (ac, loop) =>
+    aec.exec { (ac, loop, cb) =>
       val defaultPolicy = ac.writePolicyDefault
 
-      val policy = ttl.map { ttl =>
-        val modified = new WritePolicy(defaultPolicy)
-        modified.expiration = ttl.toSeconds.toInt
-        modified
-      } getOrElse defaultPolicy
-
       try {
+        val policy = ttl.map { ttl =>
+          val modified = new WritePolicy(defaultPolicy)
+          modified.expiration = ttl.toSeconds.toInt
+          modified
+        } getOrElse defaultPolicy
+
         val bins = magnet().asInstanceOf[Seq[Bin]]
-        ac.append(loop, Listeners.writeInstance(promise), policy, make(key), bins: _*)
+        ac.append(loop, Listeners.writeInstance(cb), policy, make(key), bins: _*)
       } catch {
         case NonFatal(e) =>
-          promise.failure(e)
+          cb(Left(e))
       }
     }
-    promise.future
   }
 
-  def put[K](key: K, magnet: BinValueMagnet, ttl: Option[FiniteDuration] = None)(implicit aec: AeroContext,
+  def put[K](key: K, magnet: BinValueMagnet, ttl: Option[FiniteDuration] = None)(implicit aec: AeroContext[F],
+                                                                                 F: Concurrent[F],
                                                                                  kw: KeyEncoder[K],
-                                                                                 schema: Schema): Future[Unit] = {
-    aec.exec { (ac, loop) =>
-      val defaultPolicy = ac.writePolicyDefault
-      defaultPolicy.sendKey = true
-
-      val policy = ttl.map { ttl =>
-        val modified = new WritePolicy(defaultPolicy)
-        modified.expiration = ttl.toSeconds.toInt
-        modified
-      } getOrElse defaultPolicy
-
-      val promise = Promise[Unit]()
+                                                                                 schema: Schema): F[Unit] = {
+    aec.exec { (ac, loop, cb) =>
+      val modified = new WritePolicy(ac.writePolicyDefault)
+      modified.expiration = ttl.map(_.toSeconds.toInt).getOrElse(0)
+      modified.sendKey    = true
 
       try {
         val bins = magnet().asInstanceOf[Seq[Bin]]
-        ac.put(loop, Listeners.writeInstance(promise), policy, make(key), bins: _*)
+        ac.put(loop, Listeners.writeInstance(cb), modified, make(key), bins: _*)
       } catch {
         case NonFatal(e) =>
-          promise.failure(e)
+          cb(Left(e))
       }
-      promise.future
     }
   }
 
-  def truncate(beforeLastUpdate: Instant)(implicit aec: AeroContext, schema: Schema): Unit = {
-    aec.exec { (ac, _) =>
-      val calendar = Calendar.getInstance()
-      calendar.setTimeInMillis(beforeLastUpdate.toEpochMilli)
-      ac.truncate(ac.infoPolicyDefault, schema.namespace, schema.set, calendar)
-    }
-  }
-
-  def delete[K](key: K)(implicit aec: AeroContext, kw: KeyEncoder[K], schema: Schema): Future[Boolean] = {
-    aec.exec { (ac, loop) =>
-      val promise = Promise[Boolean]()
-      val listener = new DeleteListener {
-        override def onFailure(exception: AerospikeException): Unit = {
-          promise.failure(exception)
-        }
-
-        override def onSuccess(key: Key, existed: Boolean): Unit = {
-          promise.complete(Success(existed))
-        }
-      }
-
+  def delete[K](
+      key: K
+  )(implicit aec: AeroContext[F], F: Concurrent[F], keyEncoder: KeyEncoder[K], schema: Schema): F[Boolean] = {
+    aec.exec { (ac, loop, cb) =>
       try {
-        ac.delete(loop, listener, ac.writePolicyDefault, make(key))
+        ac.delete(loop, Listeners.deleteInstance(cb), ac.writePolicyDefault, make(key))
       } catch {
         case NonFatal(e) =>
-          promise.failure(e)
+          cb(Left(e))
       }
-
-      promise.future
     }
   }
 }

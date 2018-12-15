@@ -4,10 +4,11 @@ import com.aerospike.client.Value
 import scala.collection.JavaConverters._
 
 trait DefaultEncoders {
-  implicit val encoderInt: PartialEncoder[Boolean]   = Value.get(_)
-  implicit val encoderBoolean: PartialEncoder[Int]   = Value.get(_)
-  implicit val encoderString: PartialEncoder[String] = Value.get(_)
-  implicit val encoderDouble: PartialEncoder[Double] = Value.get(_)
+  implicit val encoderBoolean: PartialEncoder[Boolean] = Value.get(_)
+  implicit val encoderLong: PartialEncoder[Long]       = Value.get(_)
+  implicit val encoderInt: PartialEncoder[Int]         = Value.get(_)
+  implicit val encoderString: PartialEncoder[String]   = Value.get(_)
+  implicit val encoderDouble: PartialEncoder[Double]   = Value.get(_)
 
   implicit def optionEncoder[T](implicit encoder: PartialEncoder[T]): PartialEncoder[Option[T]] = {
     case Some(r) => encoder.encode(r)

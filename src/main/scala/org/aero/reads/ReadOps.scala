@@ -1,9 +1,10 @@
 package org.aero.reads
 
-import com.aerospike.client.listener.{ExistsListener, RecordListener, RecordSequenceListener}
+import cats.effect.Concurrent
+import com.aerospike.client.listener.{ExistsListener, RecordSequenceListener}
 import com.aerospike.client.{AerospikeException, Key, Record, Value}
 import org.aero.common.KeyBuilder._
-import org.aero.common.{KeyDecoder, KeyEncoder}
+import org.aero.common.{KeyDecoder, KeyEncoder, Listeners}
 import org.aero.reads.ReadOps.BinSchemaMagnet
 import org.aero.{AeroContext, Schema}
 import shapeless._
@@ -11,10 +12,9 @@ import shapeless.ops.hlist._
 import shapeless.ops.record._
 import shapeless.tag.Tagged
 
-import scala.collection.mutable.ArrayBuffer
-import scala.concurrent.{Future, Promise}
+import scala.language.higherKinds
+import scala.util.Try
 import scala.util.control.NonFatal
-import scala.util.{Success, Try}
 
 trait TypeMagnet {
   type Out
@@ -25,7 +25,7 @@ trait Converter[T] {
   def binNames: List[String]
 }
 
-trait Encoder {
+trait EncoderMagnet {
   type Out
   def converter: Converter[Out]
 }
@@ -53,8 +53,8 @@ trait TypeMagnetOps {
       keysFrom: Keys.Aux[R, L],
       mapper: Mapper.Aux[symbolName.type, L, Z],
       traversable: ToTraversable.Aux[Z, List, String],
-  ): Encoder = {
-    new Encoder {
+  ): EncoderMagnet = {
+    new EncoderMagnet {
       type Out = tp.Out
       def converter: Converter[Out] = new Converter[Out] {
         def decode(m: Record): Out = {
@@ -68,90 +68,84 @@ trait TypeMagnetOps {
   }
 }
 
-trait ReadOps {
+trait ReadOps[F[_]] {
 
-  def batchGet[K](keys: Seq[K], encoder: Encoder)(implicit aec: AeroContext,
-                                                  enc: KeyEncoder[K],
-                                                  dec: KeyDecoder[K],
-                                                  schema: Schema): Future[Seq[(K, encoder.Out)]] = {
+  def batchGetAs[K](keys: Seq[K], magnet: EncoderMagnet)(implicit aec: AeroContext[F],
+                                                       F: Concurrent[F],
+                                                       enc: KeyEncoder[K],
+                                                       dec: KeyDecoder[K],
+                                                       schema: Schema): F[Seq[(K, magnet.Out)]] = {
 
-    aec.exec { (ac, loop) =>
-      val defaultPolicy = ac.batchPolicyDefault
-      //  TODO FIX default defaultPolicy.maxConcurrentThreads = 1 - sequentially
-
-      val promise = Promise[Seq[(K, encoder.Out)]]
-
-      def marshaller(key: Value, record: Record) = {
-        dec.decode(key) -> encoder.converter.decode(record)
+    aec.exec { (ac, loop, cb) =>
+      def marshaller(key: Value, record: Record) = Try {
+        dec.decode(key) -> magnet.converter.decode(record)
       }
 
-      val listener: RecordSequenceListener = Listeners.mkBatch(promise, keys.length, (k, v) => marshaller(k, v))
+      val listener: RecordSequenceListener = Listeners.mkBatch(cb, keys.length, (k, v) => marshaller(k, v))
 
       try {
-        ac.get(loop, listener, defaultPolicy, keys.map(k => make(k)).toArray, encoder.converter.binNames: _*)
+        val defaultPolicy = ac.batchPolicyDefault
+        ac.get(loop, listener, defaultPolicy, keys.map(k => make(k)).toArray, magnet.converter.binNames: _*)
       } catch {
         case NonFatal(e) =>
-          promise.failure(e)
+          cb(Left(e))
       }
-      promise.future
     }
   }
 
-  def getAs[K](key: K, encoder: Encoder)(implicit aec: AeroContext,
-                                         kw: KeyEncoder[K],
-                                         schema: Schema): Future[Option[encoder.Out]] = {
+  def getAs[K](
+      key: K,
+      magnet: EncoderMagnet
+  )(implicit aec: AeroContext[F], F: Concurrent[F], kw: KeyEncoder[K], schema: Schema): F[Option[magnet.Out]] = {
 
-    aec.exec { (ac, loop) =>
-      val defaultPolicy = ac.readPolicyDefault
-      val promise       = Promise[Option[encoder.Out]]()
+    aec.exec { (ac, loop, cb) =>
+      def marshaller(record: Record) =
+        Try(magnet.converter.decode(record))
 
-      def onSuccess(recordOpt: Option[Record]): Unit =
-        promise.complete(Try(recordOpt.map(rec => encoder.converter.decode(rec))))
-
-      val listener = Listeners.recordOptListener(onSuccess, promise.failure(_))
+      val listener = Listeners.recordOptListener(cb, rec => marshaller(rec))
       try {
-        ac.get(loop, listener, defaultPolicy, make(key), encoder.converter.binNames: _*)
+        val defaultPolicy = ac.readPolicyDefault
+        ac.get(loop, listener, defaultPolicy, make(key), magnet.converter.binNames: _*)
       } catch {
         case NonFatal(e) =>
-          promise.failure(e)
+          cb(Left(e))
       }
-      promise.future
     }
   }
 
-  def get[K](key: K, magnet: BinSchemaMagnet)(implicit aec: AeroContext,
-                                              kw: KeyEncoder[K],
-                                              schema: Schema): Future[Option[magnet.Out]] =
-    aec.exec { (ac, loop) =>
+  def get[K](
+      key: K,
+      magnet: BinSchemaMagnet
+  )(implicit aec: AeroContext[F], F: Concurrent[F], kw: KeyEncoder[K], schema: Schema): F[Option[magnet.Out]] =
+    aec.exec { (ac, loop, cb) =>
       val defaultPolicy = ac.readPolicyDefault
-      val promise       = Promise[Option[magnet.Out]]()
 
-      def onSuccess(recordOpt: Option[Record]): Unit =
-        promise.complete(Try(recordOpt.map(rec => magnet.decode(rec))))
+      def marshaller(record: Record) =
+        Try(magnet.decode(record))
 
-      val listener = Listeners.recordOptListener(onSuccess, promise.failure(_))
+      val listener = Listeners.recordOptListener(cb, rec => marshaller(rec))
 
       try {
         ac.get(loop, listener, defaultPolicy, make(key), magnet.keys: _*)
       } catch {
         case NonFatal(e) =>
-          promise.failure(e)
+          cb(Left(e))
       }
-      promise.future
     }
 
-  def exists[K](key: K)(implicit aec: AeroContext, kw: KeyEncoder[K], schema: Schema): Future[Boolean] = {
-    aec.exec { (ac, loop) =>
+  def exists[K](
+      key: K
+  )(implicit aec: AeroContext[F], F: Concurrent[F], kw: KeyEncoder[K], schema: Schema): F[Boolean] = {
+    aec.exec { (ac, loop, cb) =>
       val defaultPolicy = ac.readPolicyDefault
-      val promise       = Promise[Boolean]()
 
       val listener = new ExistsListener {
         override def onFailure(exception: AerospikeException): Unit = {
-          promise.failure(exception)
+          cb(Left(exception))
         }
 
         override def onSuccess(key: Key, exists: Boolean): Unit = {
-          promise.complete(Success(exists))
+          cb(Right(exists))
         }
       }
 
@@ -159,9 +153,8 @@ trait ReadOps {
         ac.exists(loop, listener, defaultPolicy, make(key))
       } catch {
         case NonFatal(e) =>
-          promise.failure(e)
+          cb(Left(e))
       }
-      promise.future
     }
   }
 }
@@ -244,36 +237,4 @@ object ReadOps {
         at[NamedOption[M]](nr => BinSchemaMagnet.apply(nr)(pd))
     }
   }
-}
-
-object Listeners {
-  def recordOptListener(success: Option[Record] => Unit, failure: Exception => Unit): RecordListener =
-    new RecordListener {
-      override def onSuccess(key: Key, record: Record): Unit = {
-        success(Option(record))
-      }
-      override def onFailure(exception: AerospikeException): Unit =
-        failure(exception)
-    }
-
-  def mkBatch[K, V](promise: Promise[Seq[(K, V)]], size: Int, encoder: (Value, Record) => (K, V)) =
-    new RecordSequenceListener {
-      val builder = ArrayBuffer.newBuilder[(K, V)]
-      builder.sizeHint(size)
-
-      override def onRecord(key: Key, record: Record): Unit = {
-        if(record == null)
-          println(s"Key: ${key.userKey} not found")
-        Option(record).map(v => encoder(key.userKey, v)).foreach { tuple =>
-          builder += tuple
-        }
-      }
-
-      override def onSuccess(): Unit = {
-        promise.success(builder.result().toVector)
-      }
-
-      override def onFailure(exception: AerospikeException): Unit =
-        promise.failure(exception)
-    }
 }
