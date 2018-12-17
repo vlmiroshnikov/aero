@@ -41,9 +41,6 @@ object Listeners {
       builder.sizeHint(sizeHint)
 
       override def onRecord(key: Key, record: Record): Unit = {
-        if (record == null)
-          println(s"Key: ${key.userKey} not found")
-
         encoder(key.userKey, Option(record)).foreach { tuple => // TODO log Error ???
           builder += tuple
         }
