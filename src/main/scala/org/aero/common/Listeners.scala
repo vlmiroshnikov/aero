@@ -33,17 +33,18 @@ object Listeners {
         promise(Left(exception))
     }
 
-  def mkBatch[K, V](promise: Callback[Seq[(K, V)]],
+  def mkBatch[K, V](promise: Callback[Seq[(K, Option[V])]],
                     sizeHint: Int,
-                    encoder: (Value, Record) => Try[(K, V)]): RecordSequenceListener =
+                    encoder: (Value, Option[Record]) => Try[(K, Option[V])]): RecordSequenceListener =
     new RecordSequenceListener {
-      val builder = ArrayBuffer.newBuilder[(K, V)]
+      val builder = ArrayBuffer.newBuilder[(K, Option[V])]
       builder.sizeHint(sizeHint)
 
       override def onRecord(key: Key, record: Record): Unit = {
         if (record == null)
           println(s"Key: ${key.userKey} not found")
-        Option(record).flatMap(v => encoder(key.userKey, v).toOption).foreach { tuple => // TODO log Error ???
+
+        encoder(key.userKey, Option(record)).foreach { tuple => // TODO log Error ???
           builder += tuple
         }
       }
@@ -56,9 +57,7 @@ object Listeners {
         promise(Left(exception))
     }
 
-  def mkSeq[V](promise: Callback[Seq[V]],
-                    sizeHint: Int,
-                    encoder: Record => Try[V]): RecordSequenceListener =
+  def mkSeq[V](promise: Callback[Seq[V]], sizeHint: Int, encoder: Record => Try[V]): RecordSequenceListener =
     new RecordSequenceListener {
       val builder = ArrayBuffer.newBuilder[V]
       builder.sizeHint(sizeHint)

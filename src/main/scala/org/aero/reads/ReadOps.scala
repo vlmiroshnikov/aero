@@ -91,11 +91,11 @@ trait ReadOps[F[_]] {
   def batchGetAs[K](
       keys: Seq[K],
       magnet: EncoderMagnet
-  )(implicit aec: AeroContext[F], enc: KeyEncoder[K], dec: KeyDecoder[K], schema: Schema): F[Seq[(K, magnet.Out)]] = {
+  )(implicit aec: AeroContext[F], enc: KeyEncoder[K], dec: KeyDecoder[K], schema: Schema): F[Seq[(K, Option[magnet.Out])]] = {
 
     aec.exec { (ac, loop, cb) =>
-      def marshaller(key: Value, record: Record) = Try {
-        dec.decode(key) -> magnet.converter.decode(record)
+      def marshaller(key: Value, recordOpt: Option[Record]) = Try {
+        dec.decode(key) -> recordOpt.map(record => magnet.converter.decode(record))
       }
 
       val listener: RecordSequenceListener = Listeners.mkBatch(cb, keys.length, (k, v) => marshaller(k, v))
