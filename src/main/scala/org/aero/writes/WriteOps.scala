@@ -1,14 +1,9 @@
 package org.aero.writes
 
-import java.time.Instant
-import java.util.Calendar
-
-import cats.effect.Concurrent
-import com.aerospike.client.listener.DeleteListener
-import com.aerospike.client.policy.{CommitLevel, WritePolicy}
-import com.aerospike.client.{AerospikeException, Bin, Key}
-import org.aero.common.{KeyEncoder, Listeners}
+import com.aerospike.client.Bin
+import com.aerospike.client.policy.WritePolicy
 import org.aero.common.KeyBuilder.make
+import org.aero.common.{KeyEncoder, Listeners}
 import org.aero.writes.WriteOps.BinValueMagnet
 import org.aero.{AeroContext, Schema}
 import shapeless.ops.hlist
@@ -16,13 +11,11 @@ import shapeless.ops.record.Fields
 import shapeless.{Generic, HList, LabelledGeneric, Poly1, Poly2}
 
 import scala.concurrent.duration.FiniteDuration
-import scala.concurrent.{Future, Promise}
-import scala.util.Success
+import scala.language.higherKinds
 import scala.util.control.NonFatal
 
 trait WriteOps[F[_]] {
   def append[K](key: K, magnet: BinValueMagnet, ttl: Option[FiniteDuration] = None)(implicit aec: AeroContext[F],
-                                                                                    F: Concurrent[F],
                                                                                     kw: KeyEncoder[K],
                                                                                     schema: Schema): F[Unit] = {
 
@@ -46,7 +39,6 @@ trait WriteOps[F[_]] {
   }
 
   def put[K](key: K, magnet: BinValueMagnet, ttl: Option[FiniteDuration] = None)(implicit aec: AeroContext[F],
-                                                                                 F: Concurrent[F],
                                                                                  kw: KeyEncoder[K],
                                                                                  schema: Schema): F[Unit] = {
     aec.exec { (ac, loop, cb) =>
@@ -66,7 +58,7 @@ trait WriteOps[F[_]] {
 
   def delete[K](
       key: K
-  )(implicit aec: AeroContext[F], F: Concurrent[F], keyEncoder: KeyEncoder[K], schema: Schema): F[Boolean] = {
+  )(implicit aec: AeroContext[F], keyEncoder: KeyEncoder[K], schema: Schema): F[Boolean] = {
     aec.exec { (ac, loop, cb) =>
       try {
         ac.delete(loop, Listeners.deleteInstance(cb), ac.writePolicyDefault, make(key))

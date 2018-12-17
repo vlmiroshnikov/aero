@@ -55,4 +55,27 @@ object Listeners {
       override def onFailure(exception: AerospikeException): Unit =
         promise(Left(exception))
     }
+
+  def mkSeq[V](promise: Callback[Seq[V]],
+                    sizeHint: Int,
+                    encoder: Record => Try[V]): RecordSequenceListener =
+    new RecordSequenceListener {
+      val builder = ArrayBuffer.newBuilder[V]
+      builder.sizeHint(sizeHint)
+
+      override def onRecord(key: Key, record: Record): Unit = {
+        if (record == null)
+          println(s"Key: ${key.userKey} not found")
+        Option(record).flatMap(v => encoder(v).toOption).foreach { tuple => // TODO log Error ???
+          builder += tuple
+        }
+      }
+
+      override def onSuccess(): Unit = {
+        promise(Right(builder.result().toVector))
+      }
+
+      override def onFailure(exception: AerospikeException): Unit =
+        promise(Left(exception))
+    }
 }

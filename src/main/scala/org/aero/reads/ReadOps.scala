@@ -1,7 +1,7 @@
 package org.aero.reads
 
-import cats.effect.Concurrent
 import com.aerospike.client.listener.{ExistsListener, RecordSequenceListener}
+import com.aerospike.client.query.Statement
 import com.aerospike.client.{AerospikeException, Key, Record, Value}
 import org.aero.common.KeyBuilder._
 import org.aero.common.{KeyDecoder, KeyEncoder, Listeners}
@@ -70,11 +70,28 @@ trait TypeMagnetOps {
 
 trait ReadOps[F[_]] {
 
-  def batchGetAs[K](keys: Seq[K], magnet: EncoderMagnet)(implicit aec: AeroContext[F],
-                                                       F: Concurrent[F],
-                                                       enc: KeyEncoder[K],
-                                                       dec: KeyDecoder[K],
-                                                       schema: Schema): F[Seq[(K, magnet.Out)]] = {
+  def query(statement: Statement, magnet: EncoderMagnet)(implicit aec: AeroContext[F]): F[Seq[magnet.Out]] = {
+    aec.exec { (ac, loop, cb) =>
+      def marshaller(record: Record) = Try {
+        magnet.converter.decode(record)
+      }
+
+      val listener: RecordSequenceListener = Listeners.mkSeq(cb, 1000, v => marshaller(v))
+
+      try {
+        val defaultPolicy = ac.queryPolicyDefault
+        ac.query(loop, listener, defaultPolicy, statement)
+      } catch {
+        case NonFatal(e) =>
+          cb(Left(e))
+      }
+    }
+  }
+
+  def batchGetAs[K](
+      keys: Seq[K],
+      magnet: EncoderMagnet
+  )(implicit aec: AeroContext[F], enc: KeyEncoder[K], dec: KeyDecoder[K], schema: Schema): F[Seq[(K, magnet.Out)]] = {
 
     aec.exec { (ac, loop, cb) =>
       def marshaller(key: Value, record: Record) = Try {
@@ -96,7 +113,7 @@ trait ReadOps[F[_]] {
   def getAs[K](
       key: K,
       magnet: EncoderMagnet
-  )(implicit aec: AeroContext[F], F: Concurrent[F], kw: KeyEncoder[K], schema: Schema): F[Option[magnet.Out]] = {
+  )(implicit aec: AeroContext[F], kw: KeyEncoder[K], schema: Schema): F[Option[magnet.Out]] = {
 
     aec.exec { (ac, loop, cb) =>
       def marshaller(record: Record) =
@@ -116,7 +133,7 @@ trait ReadOps[F[_]] {
   def get[K](
       key: K,
       magnet: BinSchemaMagnet
-  )(implicit aec: AeroContext[F], F: Concurrent[F], kw: KeyEncoder[K], schema: Schema): F[Option[magnet.Out]] =
+  )(implicit aec: AeroContext[F], kw: KeyEncoder[K], schema: Schema): F[Option[magnet.Out]] =
     aec.exec { (ac, loop, cb) =>
       val defaultPolicy = ac.readPolicyDefault
 
@@ -135,7 +152,7 @@ trait ReadOps[F[_]] {
 
   def exists[K](
       key: K
-  )(implicit aec: AeroContext[F], F: Concurrent[F], kw: KeyEncoder[K], schema: Schema): F[Boolean] = {
+  )(implicit aec: AeroContext[F], kw: KeyEncoder[K], schema: Schema): F[Boolean] = {
     aec.exec { (ac, loop, cb) =>
       val defaultPolicy = ac.readPolicyDefault
 
