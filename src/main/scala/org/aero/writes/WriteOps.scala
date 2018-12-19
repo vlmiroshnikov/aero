@@ -1,7 +1,7 @@
 package org.aero.writes
 
 import com.aerospike.client.Bin
-import com.aerospike.client.policy.WritePolicy
+import com.aerospike.client.policy.{RecordExistsAction, WritePolicy}
 import org.aero.common.KeyBuilder.make
 import org.aero.common.{KeyEncoder, Listeners}
 import org.aero.writes.WriteOps.BinValueMagnet
@@ -40,11 +40,11 @@ trait WriteOps[F[_]] {
 
   def put[K](key: K, magnet: BinValueMagnet, ttl: Option[FiniteDuration] = None)(implicit aec: AeroContext[F],
                                                                                  kw: KeyEncoder[K],
-                                                                                 schema: Schema): F[Unit] = {
-    aec.exec { (ac, loop, cb) =>
+                                                                                 schema: Schema): F[Unit] = aec.exec {
+    (ac, loop, cb) =>
       val modified = new WritePolicy(ac.writePolicyDefault)
-      modified.expiration = ttl.map(_.toSeconds.toInt).getOrElse(0)
-      modified.sendKey    = true
+      modified.expiration         = ttl.map(_.toSeconds.toInt).getOrElse(0)
+      modified.recordExistsAction = RecordExistsAction.REPLACE
 
       try {
         val bins = magnet().asInstanceOf[Seq[Bin]]
@@ -53,7 +53,6 @@ trait WriteOps[F[_]] {
         case NonFatal(e) =>
           cb(Left(e))
       }
-    }
   }
 
   def delete[K](
