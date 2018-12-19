@@ -19,7 +19,7 @@ Quick start
 -----------
 To start working with Aero you have to add dependency sbt:
 ```scala
-  libraryDependencies += "org.aero" % "aero" % "0.4.0" 
+  libraryDependencies += "org.aero" % "aero" % "0.5.0" 
 ```
 
 Now you can use it like this:
