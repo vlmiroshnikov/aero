@@ -9,9 +9,9 @@ import org.aero.AeroContext.Callback
 import scala.language.higherKinds
 
 object AeroClient {
-  def apply[F[_]](hosts: List[String], port: Int)(implicit F: Async[F]): AeroClient[F] = new AeroClient[F] {
+  def apply[F[_]](hosts: List[String], port: Int, maxConnectionsPerNode: Option[Int] = None)(implicit F: Async[F]): AeroClient[F] = new AeroClient[F] {
     private val cp = new ClientPolicy() {
-      maxConnsPerNode = 1000
+      maxConnsPerNode = maxConnectionsPerNode.getOrElse(300)
       eventLoops = new NioEventLoops(new EventPolicy(), -1)
     }
 
