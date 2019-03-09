@@ -4,7 +4,6 @@ import org.aero.common.{DefaultKeyDecoders, DefaultKeyEncoders}
 import org.aero.writes._
 import org.aero.reads._
 
-import scala.language.higherKinds
 
 trait AeroOps[F[_]]
     extends WriteOps[F]

@@ -3,11 +3,9 @@ package org.aero
 import cats.effect.Async
 import com.aerospike.client.{AerospikeClient, Host}
 import com.aerospike.client.async._
-import com.aerospike.client.cluster.ClusterStats
 import com.aerospike.client.policy.ClientPolicy
 import org.aero.AeroContext.Callback
 
-import scala.language.higherKinds
 
 object AeroClient {
   def apply[F[_]](hosts: List[String], port: Int, maxConnectionsPerNode: Option[Int] = None)(
@@ -19,7 +17,6 @@ object AeroClient {
     }
 
     private val client = new AerospikeClient(cp, hosts.map(h => new Host(h, port)): _*)
-    client.getClusterStats.threadsInUse
 
     override def exec[R](func: (AerospikeClient, EventLoop, Callback[R]) => Unit): F[R] = {
       Async[F].async[R] { cb =>
@@ -27,14 +24,11 @@ object AeroClient {
       }
     }
 
-    override def clusterStats: ClusterStats = client.getClusterStats
-
     def close(): F[Unit] =
       F.delay(client.close())
   }
 }
 
 trait AeroClient[F[_]] extends AeroContext[F] {
-  def clusterStats: ClusterStats
   def close(): F[Unit]
 }

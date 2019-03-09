@@ -10,8 +10,8 @@ Dependencies
 ------------
 - scala 2.12
 - shapeless-2.3.3
-- cats-1.5.0
-- cats-effect-1.1.0
+- cats-1.6.0
+- cats-effect-1.2.0
 - java aerospike-client 4
 
 
@@ -19,7 +19,7 @@ Quick start
 -----------
 To start working with Aero you have to add dependency sbt:
 ```scala
-  libraryDependencies += "org.aero" % "aero" % "0.5.0" 
+  libraryDependencies += "org.aero" % "aero" % "0.5.4" 
 ```
 
 Now you can use it like this:

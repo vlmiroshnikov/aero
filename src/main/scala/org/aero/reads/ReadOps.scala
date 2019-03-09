@@ -12,9 +12,9 @@ import shapeless.ops.hlist._
 import shapeless.ops.record._
 import shapeless.tag.Tagged
 
-import scala.language.higherKinds
 import scala.util.Try
 import scala.util.control.NonFatal
+import scala.language.implicitConversions
 
 trait TypeMagnet {
   type Out

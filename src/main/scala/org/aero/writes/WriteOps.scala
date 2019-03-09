@@ -11,8 +11,8 @@ import shapeless.ops.record.Fields
 import shapeless.{Generic, HList, LabelledGeneric, Poly1, Poly2}
 
 import scala.concurrent.duration.FiniteDuration
-import scala.language.higherKinds
 import scala.util.control.NonFatal
+import scala.language.implicitConversions
 
 trait WriteOps[F[_]] {
   def append[K](key: K, magnet: BinValueMagnet, ttl: Option[FiniteDuration] = None)(implicit aec: AeroContext[F],

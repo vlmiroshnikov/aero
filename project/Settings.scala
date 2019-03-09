@@ -6,8 +6,8 @@ object Settings {
     val scala     = "2.12.8"
     val shapless  = "2.3.3"
     val aerospike = "4.2.3"
-    val effect    = "1.1.0"
-    val cats      = "1.5.0"
+    val effect    = "1.2.0"
+    val cats      = "1.6.0"
     val monix     = "3.0.0-RC2"
   }
 
@@ -17,11 +17,13 @@ object Settings {
     "UTF-8",
     "-unchecked",
     "-deprecation",
-    "-Xfuture",
+    "-feature",
     "-Yno-adapted-args",
     "-Ywarn-dead-code",
     "-Ywarn-numeric-widen",
     "-Ywarn-value-discard",
+    "-language:higherKinds",
+    "-Ypartial-unification",
     "-Ywarn-unused"
   )
 
