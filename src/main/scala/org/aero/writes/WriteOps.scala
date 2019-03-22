@@ -5,6 +5,7 @@ import com.aerospike.client.policy.{RecordExistsAction, WritePolicy}
 import org.aero.common.KeyBuilder.make
 import org.aero.common.{KeyEncoder, Listeners}
 import org.aero.writes.WriteOps.BinValueMagnet
+import org.aero.writes.WriteOps.WriteParamDef.writeParamDef
 import org.aero.{AeroContext, Schema}
 import shapeless.ops.hlist
 import shapeless.ops.record.Fields
@@ -90,16 +91,18 @@ object WriteOps {
     def apply(p: T): Out
   }
 
-  object WriteParamDef {
+  trait LowLevel {
+    implicit def forWBin[T](implicit enc: PartialEncoder[T]): WriteParamDefAux[ValueBin[T], List[Bin]] =
+      writeParamDef(a => List(new Bin(a.name, enc.encode(a.value))))
+  }
+
+  object WriteParamDef extends LowLevel {
 
     def writeParamDef[A, B](f: A => B): WriteParamDefAux[A, B] =
       new WriteParamDef[A] {
         type Out = B
         override def apply(p: A): Out = f(p)
       }
-
-    implicit def forWBin[T](implicit enc: PartialEncoder[T]): WriteParamDefAux[ValueBin[T], List[Bin]] =
-      writeParamDef(a => List(new Bin(a.name, enc.encode(a.value))))
 
     implicit def fopTuple[T <: Product, L <: HList, Out](
         implicit gen: Generic.Aux[T, L],
