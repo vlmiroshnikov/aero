@@ -1,9 +1,11 @@
 package org.aero.writes
 
-case class ValueBin[T](name: String, value: T)
+class ValueBin[T](val name: String, val value: T)
 
 trait ValueBinOps {
   implicit class valueBinCtor(name: String) {
-    def ->>[T](value: T): ValueBin[T] = ValueBin(name, value)
+    def ->>[T](value: T): ValueBin[T] = {
+      new ValueBin(name, value)
+    }
   }
 }

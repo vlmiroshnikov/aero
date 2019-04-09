@@ -4,7 +4,7 @@ import sbt.Keys._
 lazy val aero = project
   .in(file("."))
   .settings(
-    version       := "0.5.5",
+    version       := "0.5.6",
     scalaVersion  := Versions.scala,
     scalacOptions := Settings.scalacOptions,
     libraryDependencies ++= Settings.dependencies,

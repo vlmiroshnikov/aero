@@ -93,7 +93,9 @@ object WriteOps {
 
   trait LowLevel {
     implicit def forWBin[T](implicit enc: PartialEncoder[T]): WriteParamDefAux[ValueBin[T], List[Bin]] =
-      writeParamDef(a => List(new Bin(a.name, enc.encode(a.value))))
+      writeParamDef { a =>
+        List(new Bin(a.name, enc.encode(a.value)))
+      }
   }
 
   object WriteParamDef extends LowLevel {
@@ -112,7 +114,7 @@ object WriteOps {
         gen.to(p).foldLeft(List.empty[Bin])(Reducer)
       }
 
-    implicit def forCaseClass[T, L <: HList, K <: HList, R <: HList, Z <: HList, Out](
+    implicit def forCaseClass[T <: Product, L <: HList, K <: HList, R <: HList, Z <: HList, Out](
         implicit gen: LabelledGeneric.Aux[T, L],
         fields: Fields.Aux[L, R],
         mapper: hlist.Mapper.Aux[keysToString.type, R, Z],
@@ -125,7 +127,7 @@ object WriteOps {
 
     object keysToString extends Poly1 {
       implicit def toWBin[A, B] = at[(Symbol with A, B)] {
-        case (k, v) => ValueBin[B](k.name, v)
+        case (k, v) => new ValueBin[B](k.name, v)
       }
     }
 
