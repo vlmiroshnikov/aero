@@ -45,7 +45,6 @@ trait WriteOps[F[_]] {
     (ac, loop, cb) =>
       val modified = new WritePolicy(ac.writePolicyDefault)
       modified.expiration         = ttl.map(_.toSeconds.toInt).getOrElse(0)
-      modified.recordExistsAction = RecordExistsAction.REPLACE
 
       try {
         val bins = magnet().asInstanceOf[Seq[Bin]]
