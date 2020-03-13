@@ -5,7 +5,7 @@ object Settings {
   object Versions {
     val scala     = "2.12.8"
     val shapless  = "2.3.3"
-    val aerospike = "4.2.3"
+    val aerospike = "4.4.9"
     val effect    = "1.2.0"
     val cats      = "1.6.0"
     val monix     = "3.0.0-RC2"
