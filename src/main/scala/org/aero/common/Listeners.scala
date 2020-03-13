@@ -3,6 +3,8 @@ import com.aerospike.client.listener.{DeleteListener, RecordListener, RecordSequ
 import com.aerospike.client.{AerospikeException, Key, Record, Value}
 import org.aero.AeroContext.Callback
 
+import scala.collection.JavaConverters._
+import scala.collection.mutable.{Map => MMap}
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Try
 
@@ -69,6 +71,30 @@ object Listeners {
 
       override def onSuccess(): Unit = {
         promise(Right(builder.result().toVector))
+      }
+
+      override def onFailure(exception: AerospikeException): Unit =
+        promise(Left(exception))
+    }
+
+  def mkCounterSeq(promise: Callback[Map[String, Long]]): RecordSequenceListener =
+    new RecordSequenceListener {
+      val counterMap = MMap.empty[String, Long]
+
+      override def onRecord(key: Key, record: Record): Unit = {
+        if (record != null) {
+          record.bins.asScala.toList
+            .foreach { case (bin, v) =>
+              if (v != null) {
+                val x = counterMap.getOrElse(bin, 0L)
+                counterMap.update(bin, x + 1)
+              }
+            }
+        } else {}
+      }
+
+      override def onSuccess(): Unit = {
+        promise(Right(counterMap.toMap))
       }
 
       override def onFailure(exception: AerospikeException): Unit =

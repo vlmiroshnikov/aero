@@ -1,6 +1,7 @@
 package org.aero.reads
 
 import com.aerospike.client.listener.{ExistsListener, RecordSequenceListener}
+import com.aerospike.client.policy.Priority
 import com.aerospike.client.query.Statement
 import com.aerospike.client.{AerospikeException, Key, Record, Value}
 import org.aero.common.KeyBuilder._
@@ -12,6 +13,7 @@ import shapeless.ops.hlist._
 import shapeless.ops.record._
 import shapeless.tag.Tagged
 
+import scala.concurrent.duration.FiniteDuration
 import scala.util.Try
 import scala.util.control.NonFatal
 import scala.language.implicitConversions
@@ -172,6 +174,29 @@ trait ReadOps[F[_]] {
         case NonFatal(e) =>
           cb(Left(e))
       }
+    }
+  }
+
+  def scan(bins: List[String])
+          (recordsPerSecond: Option[Int],
+           maxConcurrentNodes: Option[Int],
+           socketTimeout: Option[FiniteDuration],
+           totalTimeout: Option[FiniteDuration])
+          (implicit
+           aec: AeroContext[F],
+           schema: Schema): F[Map[String, Long]] = aec.exec { (ac, loop, cb) =>
+    val policy = ac.scanPolicyDefault
+    policy.priority = Priority.LOW
+    recordsPerSecond.fold(policy) { rps => policy.recordsPerSecond = rps; policy }
+    maxConcurrentNodes.fold(policy) { mcn => policy.maxConcurrentNodes = mcn;policy }
+    socketTimeout.fold(policy) { st => policy.socketTimeout = st.toMillis.toInt; policy }
+    totalTimeout.fold(policy) { tt => policy.totalTimeout = tt.toMillis.toInt; policy}
+
+    try {
+      ac.scanAll(loop, Listeners.mkCounterSeq(cb), policy, schema.namespace, schema.set, bins: _*)
+    } catch {
+      case NonFatal(e) =>
+        cb(Left(e))
     }
   }
 }
