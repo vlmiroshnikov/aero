@@ -12,7 +12,11 @@ trait DefaultDecoders {
 
   implicit def decoderOption[T](implicit decoder: PartialDecoder[T]): PartialDecoder[Option[T]] =
     (a: Record, key: String) => {
-      if (a.bins.containsKey(key)) Some(decoder.decode(a, key)) else None
+      if ((a.bins != null) && (a.bins.containsKey(key))) {
+        Some(decoder.decode(a, key))
+      } else {
+        None
+      }
     }
 
   implicit def decoderList[T]: PartialDecoder[List[T]] = (a: Record, key: String) => {

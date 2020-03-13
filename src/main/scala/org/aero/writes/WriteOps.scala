@@ -68,6 +68,18 @@ trait WriteOps[F[_]] {
       }
     }
   }
+
+  def deleteBins[K](key: K, binNames: List[String])
+                   (implicit aec: AeroContext[F],
+                    keyEncoder: KeyEncoder[K],
+                    schema: Schema): F[Unit] = aec.exec { (ac, loop, cb) =>
+    try {
+      ac.put(loop, Listeners.writeInstance(cb), ac.writePolicyDefault, make(key), binNames.map(Bin.asNull): _*)
+    } catch {
+      case NonFatal(e) =>
+        cb(Left(e))
+    }
+  }
 }
 
 object WriteOps {
