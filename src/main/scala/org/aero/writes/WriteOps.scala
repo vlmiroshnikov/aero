@@ -1,7 +1,7 @@
 package org.aero.writes
 
 import com.aerospike.client.Bin
-import com.aerospike.client.policy.{RecordExistsAction, WritePolicy}
+import com.aerospike.client.policy.WritePolicy
 import org.aero.common.KeyBuilder.make
 import org.aero.common.{KeyEncoder, Listeners}
 import org.aero.writes.WriteOps.BinValueMagnet
