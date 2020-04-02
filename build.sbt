@@ -4,7 +4,7 @@ import sbt.Keys._
 lazy val aero = project
   .in(file("."))
   .settings(
-    version       := "0.5.9",
+    version       := "0.6.0",
     scalaVersion  := Versions.scala212,
     scalacOptions ++=
       (CrossVersion.partialVersion(scalaVersion.value) match {

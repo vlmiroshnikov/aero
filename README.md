@@ -8,18 +8,18 @@ This project provides scala client to Aerospike database.
 
 Dependencies 
 ------------
-- scala 2.12
+- scala 2.12/2.13
 - shapeless-2.3.3
 - cats-1.6.0
 - cats-effect-1.2.0
-- java aerospike-client 4
+- java aerospike-client 4+
 
 
 Quick start 
 -----------
 To start working with Aero you have to add dependency sbt:
 ```scala
-  libraryDependencies += "org.aero" % "aero" % "0.5.4" 
+  libraryDependencies += "org.aero" % "aero" % "0.6.0" 
 ```
 
 Now you can use it like this:
